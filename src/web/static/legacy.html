@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPHEREx · кадри за датами</title>
+<style>
+  :root { --bg:#0A0E1A; --panel:#12182B; --line:#2A3352; --text:#E6E8F0; --muted:#9AA3B8; --accent:#F2A93B; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 800px; margin: 0 auto; padding: 20px 16px 40px; display:flex; flex-direction:column; gap:14px; }
+  h1 { margin:0; font-size:20px; }
+  .muted { color:var(--muted); font-size:13px; }
+  form { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); }
+  input, select, button { height:40px; border-radius:8px; border:1px solid var(--line); background:var(--panel); color:var(--text); font-size:14px; padding:0 10px; }
+  input[type=text] { min-width: 260px; font-family: ui-monospace, Menlo, monospace; }
+  button { cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#1A1300; font-weight:600; }
+  .presets { display:flex; flex-wrap:wrap; gap:6px; }
+  .presets button, .tl-tools button { height:32px; font-size:13px; }
+  .viewer { position:relative; width:100%; aspect-ratio:1; background:#000; border-radius:12px; overflow:hidden; border:1px solid var(--line); }
+  .viewer img { width:100%; height:100%; display:block; }
+  .viewer .msg { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); text-align:center; padding:20px; }
+  .tl-head { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  .tl-tools { display:flex; gap:6px; }
+  #timeline { width:100%; display:block; cursor:crosshair; touch-action:none; outline:none; border-radius:8px; user-select:none; -webkit-user-select:none; }
+  #timeline:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+  .epochs { display:flex; flex-wrap:wrap; gap:6px; }
+  .epochs button { height:30px; font-size:12px; border-color:#1D6B55; }
+  .epochs button.on { background:#0F6E56; border-color:#5DCAA5; }
+  .row { display:flex; gap:10px; align-items:center; }
+  .row input[type=range] { flex:1; height:auto; accent-color: var(--accent); padding:0; border:none; background:none; }
+  .mono { font-family: ui-monospace, Menlo, monospace; }
+  #status { min-height: 20px; }
+  #status.err { color:#E87A6A; }
+  label.check { flex-direction:row; align-items:center; gap:8px; height:40px; font-size:13px; color:var(--text); cursor:pointer; }
+  label.check input { height:16px; width:16px; margin:0; accent-color:var(--accent); }
+  .stage { display:flex; gap:10px; align-items:stretch; }
+  .stage .viewer { flex:1; min-width:0; }
+  .bands { width:116px; flex:none; display:flex; flex-direction:column; gap:1px; padding:6px; background:var(--panel); border:1px solid var(--line); border-radius:12px; outline:none; user-select:none; -webkit-user-select:none; touch-action:none; }
+  .bands:focus-visible { box-shadow:0 0 0 2px var(--accent); }
+  .bands.off { opacity:.4; pointer-events:none; }
+  .band { flex:1; min-height:0; display:grid; grid-template-columns:24px 1fr 22px; align-items:center; gap:4px; padding:0 4px; border-radius:4px; font-size:11px; line-height:1; color:var(--muted); cursor:pointer; font-family: ui-monospace, Menlo, monospace; }
+  .band .track { height:7px; background:#1A2238; border-radius:2px; overflow:hidden; }
+  .band .bar { display:block; height:100%; background:#5DCAA5; }
+  .band .n { text-align:right; }
+  .band.empty { opacity:.35; cursor:default; }
+  .band.all { border-bottom:1px solid var(--line); border-radius:4px 4px 0 0; }
+  .band.on { background:var(--accent); color:#1A1300; }
+  .band.on .track { background:rgba(0,0,0,.25); }
+  .band.on .bar { background:#1A1300; }
+  .warn { color:#F2C66B; font-size:13px; }
+  [hidden] { display:none !important; }
+  .modes { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; flex:none; }
+  .modes button { border:none; border-radius:0; height:36px; padding:0 16px; background:var(--panel); }
+  .modes button[aria-pressed="true"] { background:var(--accent); color:#1A1300; font-weight:600; }
+  .opts { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; }
+  .opts select, .opts input[type=datetime-local] { height:36px; font-size:13px; padding:0 8px; }
+  .opts label.inline { flex-direction:row; align-items:center; gap:6px; font-size:13px; color:var(--text); }
+  .opts label.inline input[type=checkbox] { height:16px; width:16px; margin:0; accent-color:var(--accent); }
+  .opts .group { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; }
+  .views { flex:1; min-width:0; display:flex; gap:10px; }
+  .views .viewer { flex:1; min-width:0; }
+  .viewer .badge { position:absolute; right:8px; bottom:8px; background:rgba(10,14,26,.85); color:var(--text); font-size:12px; padding:2px 8px; border-radius:6px; }
+  @media (max-width: 520px) {
+    .bands { width:84px; padding:4px; }
+    .band { grid-template-columns:18px 1fr 18px; gap:3px; padding:0 2px; font-size:10px; }
+    .views.cmp { flex-direction:column; }
+    .opts input[type=datetime-local] { width:100%; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>SPHEREx · кадри за датами</h1>
+    <div class="muted">Кадри перепроєктовані на спільну сітку: північ угорі, схід ліворуч. Хрестик — введені координати.</div>
+  </div>
+
+  <form id="form">
+    <label>Координати (RA Dec)
+      <input id="coords" type="text" placeholder="08h55m10.831s -7d14m42.53s" required>
+    </label>
+    <label>Детектор
+      <select id="detector">
+        <option value="1">D1 · 0.75–1.1 мкм</option><option value="2">D2 · 1.1–1.6 мкм</option>
+        <option value="3">D3 · 1.6–2.4 мкм</option><option value="4">D4 · 2.4–3.8 мкм</option>
+        <option value="5">D5 · 3.8–4.4 мкм</option><option value="6" selected>D6 · 4.4–5.0 мкм</option>
+      </select>
+    </label>
+    <label>Поле, ′
+      <input id="size" type="number" min="1" max="60" step="1" value="6" style="width:80px">
+    </label>
+    <button class="primary" type="submit">Знайти</button>
+    <label class="check" title="Також кадри, де вирізка частково виходить за край детектора">
+      <input id="cropped" type="checkbox"> Показати обрізані знімки
+    </label>
+  </form>
+
+  <div class="presets" id="presets"></div>
+
+  <div class="opts">
+    <div class="modes" role="group" aria-label="Режим">
+      <button type="button" id="mode-frames" aria-pressed="true">Кадри</button>
+      <button type="button" id="mode-stacks" aria-pressed="false">Стеки</button>
+    </div>
+    <div class="group" id="stack-opts" hidden>
+      <select id="win-kind" aria-label="Вікно стеку">
+        <option value="epoch">Вікно: епоха</option><option value="day">Вікно: доба (UTC)</option>
+        <option value="custom">Вікно: свій проміжок</option>
+      </select>
+      <span class="group" id="custom-range" hidden>
+        <input id="c-start" type="datetime-local" aria-label="Початок, UTC">
+        <input id="c-end" type="datetime-local" aria-label="Кінець, UTC">
+        <span class="muted">UTC</span>
+      </span>
+      <select id="method" aria-label="Метод складання">
+        <option value="minmax">minmax</option><option value="sigma">sigma</option><option value="mean">mean</option>
+      </select>
+      <label class="inline"><input id="cmp" type="checkbox"> Порівняти з</label>
+      <select id="method2" aria-label="Другий метод" disabled>
+        <option value="minmax">minmax</option><option value="sigma" selected>sigma</option><option value="mean">mean</option>
+      </select>
+    </div>
+    <label class="inline" title="Межі контрасту беруться з першої показаної картинки й не змінюються, поки не зміниш координати чи детектор">
+      <input id="same" type="checkbox"> Однаковий контраст
+    </label>
+    <label class="inline" title="Не заповнювати пікселі без даних (центри насичених зірок) і показати їх темно-червоним">
+      <input id="holes" type="checkbox"> Показати дірки
+    </label>
+  </div>
+
+  <div id="status" class="muted"></div>
+
+  <div class="stage">
+    <div class="views" id="views">
+      <div class="viewer">
+        <img id="frame" alt="Кадр SPHEREx">
+        <div class="msg" id="msg">Введи координати або вибери тестову ціль</div>
+        <div class="badge" id="busy" hidden>завантаження…</div>
+      </div>
+      <div class="viewer" id="viewer2" hidden>
+        <img id="frame2" alt="Той самий стек іншим методом">
+      </div>
+    </div>
+    <div class="bands off" id="bands" tabindex="0" role="slider" aria-orientation="vertical"
+         aria-label="Спектральна смуга" aria-valuemin="0" aria-valuemax="17" aria-valuenow="0"></div>
+  </div>
+  <div class="warn" id="warn" hidden></div>
+
+  <div class="tl-head">
+    <span class="muted" id="tl-title">—</span>
+    <span class="tl-tools">
+      <button id="zin" type="button" aria-label="Наблизити" disabled>+</button>
+      <button id="zout" type="button" aria-label="Віддалити" disabled>−</button>
+      <button id="zall" type="button" disabled>Усе</button>
+    </span>
+  </div>
+  <svg id="timeline" tabindex="0" viewBox="0 0 760 92" role="slider" aria-label="Часова шкала кадрів">
+    <rect x="1" y="10" width="758" height="56" rx="6" fill="#12182B" stroke="#2A3352"/>
+    <g id="tl-epochs"></g><g id="tl-ticks"></g><g id="tl-axis"></g>
+    <g id="tl-tip" style="display:none"><rect id="tl-tipbg" y="0" height="18" rx="4" fill="#E6E8F0"/><text id="tl-tiptx" y="13" font-size="12" fill="#0A0E1A"></text></g>
+  </svg>
+  <div class="epochs" id="epoch-chips"></div>
+  <div class="muted">Колесо — зум · затисни й веди — прокрутка · ← → — сусідній кадр або стек · подвійний клік або кнопка епохи — наблизити її</div>
+
+  <div class="row">
+    <button id="play" type="button" disabled>▶</button>
+    <input id="slider" type="range" min="0" max="0" value="0" disabled aria-label="Кадр або стек">
+    <span class="mono" id="counter">0 / 0</span>
+  </div>
+  <div class="mono" id="current" style="text-align:center">—</div>
+</main>
+
+<script>
+const PRESETS = [
+  ["Barnard's Star", "17h57m47.1s +4d46m03s"],   // position of 2025-2026: the star moves ~10"/yr
+  ["Epsilon Indi B", "331.0440 -56.7830"],
+  ["WISE 0855", "08h55m02.4s -7d14m32s"],         // ~2025.9; the name gives epoch ~2010.4, motion -8.1"/yr in RA
+  ["RW Aurigae", "76.9564 30.4014"],
+  ["R Draconis", "248.1675 66.7550"],
+  ["Orion M42", "83.8221 -5.3911"],
+];
+const DAY = 864e5;
+const TL = { x0: 12, x1: 748 };
+const $ = id => document.getElementById(id);
+const svg = $("timeline");
+const N_BANDS = 17, BAND_ARCMIN = 12, WARN_ARCMIN = 10;
+
+let query = null;                 // {coords, detector, size, full} of the last search
+let mode = "frames";              // "frames" | "stacks"
+let allFrames = [], frames = [], bandEdges = [], band = 0, counts = [];
+let epochs = [];                  // from /api/windows: {start, end, label, n, t0, t1}
+let stackWins = [];               // windows of the stack mode, same shape
+let items = [], times = [];       // what the timeline, slider and playback walk through; times = item centers
+let sel = 0, win = null, span = null, timer = null, dragging = false;
+let lastDown = { t: 0, x: 0 };
+let limits = { frames: null, stacks: null };   // [vmin, vmax] for "same contrast", per mode
+let refreshSeq = 0, preloaded = false;
+
+PRESETS.forEach(([name, c]) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = name;
+  b.onclick = () => { $("coords").value = c; search(); };
+  $("presets").appendChild(b);
+});
+
+const fmt = t => new Date(t).toISOString().slice(0, 16).replace("T", " ");
+const api = (path, params) => path + "?" + new URLSearchParams(params);
+const toWin = w => ({ ...w, n: w.n_frames, t0: Date.parse(w.start), t1: Date.parse(w.end) });
+function status(text, err = false) { $("status").textContent = text; $("status").className = err ? "err" : "muted"; }
+function spanText(ms) {
+  const d = ms / DAY;
+  return d > 60 ? Math.round(d / 30) + " міс." : d > 2 ? Math.round(d) + " дн." : d > 0.1 ? Math.round(d * 24) + " год" : Math.max(1, Math.round(ms / 6e4)) + " хв";
+}
+async function getJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.json();
+}
+function baseParams() {
+  return { coords: query.coords, detector: query.detector, size: query.size, full: query.full ? 1 : 0 };
+}
+
+// ---------- image URLs and loading ----------
+function frameUrl(f) {
+  // the PNG font is ASCII-only, so no Greek letters here
+  const spec = f.band ? `  b${f.band}  ${f.lambda_um.toFixed(3)} um` : "";
+  const p = { path: f.path, coords: query.coords, size: query.size,
+              label: `${fmt(Date.parse(f.date_obs))}  D${query.detector}${spec}` };
+  if ($("same").checked) {   // shared limits only make sense in MJy/sr
+    p.scale = "mjy";
+    if (limits.frames) [p.vmin, p.vmax] = limits.frames;
+  }
+  if ($("holes").checked) p.holes = 1;
+  return api("/api/frame.png", p);
+}
+
+function stackUrl(w, method, lim = null) {
+  const p = { ...baseParams(), start: w.start, end: w.end, method };
+  if (band) p.band = band;
+  if ($("holes").checked) p.holes = 1;
+  if (lim) [p.vmin, p.vmax] = lim;
+  return api("/api/stack.png", p);
+}
+
+// fetch -> blob instead of <img src>: the page needs the X-Vmin / X-Vmax / X-N-Frames headers.
+const tokens = {};
+async function loadInto(id, url) {
+  const tok = tokens[id] = (tokens[id] || 0) + 1;
+  const r = await fetch(url);
+  if (tokens[id] !== tok) return null;               // a newer request replaced this one
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  const blob = await r.blob();
+  if (tokens[id] !== tok) return null;
+  const img = $(id);
+  if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+  img.dataset.url = URL.createObjectURL(blob);
+  img.src = img.dataset.url;
+  return r.headers;
+}
+const limitsOf = h => [h.get("X-Vmin"), h.get("X-Vmax")];
+
+let busyCount = 0;
+function busy(on) {
+  busyCount = Math.max(0, busyCount + (on ? 1 : -1));
+  $("busy").textContent = mode === "stacks" ? "будую стек…" : "завантаження…";
+  $("busy").hidden = !busyCount;
+}
+
+function preloadFrames() {
+  if (preloaded || mode !== "frames" || ($("same").checked && !limits.frames)) return;
+  preloaded = true;
+  allFrames.forEach(f => fetch(frameUrl(f)).catch(() => {}));   // browser cache, for smooth scrubbing
+}
+
+async function preloadStacks(i) {
+  if ($("same").checked && !limits.stacks) return;
+  for (const k of [i + 1, i - 1]) {                  // one at a time: a cold stack is ~1-3 s of S3 reads
+    const it = items[k];
+    if (!it || mode !== "stacks" || !it.ref.n) continue;
+    await fetch(stackUrl(it.ref, $("method").value, $("same").checked ? limits.stacks : null)).catch(() => {});
+  }
+}
+
+async function show() {
+  const i = sel, it = items[i];
+  if (!it) return;
+  if (mode === "stacks" && !it.ref.n) {
+    $("frame").removeAttribute("src"); $("frame2").removeAttribute("src");
+    $("msg").style.display = "flex"; $("msg").textContent = "У цьому проміжку немає кадрів";
+    return;
+  }
+  $("msg").style.display = "none";
+  busy(true);
+  try {
+    if (mode === "frames") {
+      const h = await loadInto("frame", frameUrl(it.ref));
+      if (h && $("same").checked && !limits.frames) { limits.frames = limitsOf(h); preloadFrames(); }
+      return;
+    }
+    const h = await loadInto("frame", stackUrl(it.ref, $("method").value, $("same").checked ? limits.stacks : null));
+    if (!h) return;
+    if ($("same").checked && !limits.stacks) limits.stacks = limitsOf(h);
+    it.used = +h.get("X-N-Frames");
+    if (i === sel) caption();
+    if ($("cmp").checked) await loadInto("frame2", stackUrl(it.ref, $("method2").value, limitsOf(h)));
+    preloadStacks(i);
+  } catch (e) {
+    status("Не вдалося показати: " + e.message, true);
+  } finally {
+    busy(false);
+  }
+}
+
+// ---------- captions ----------
+function frameCaption(f) {
+  const spec = f.band
+    ? `λ ${f.lambda_um.toFixed(3)} мкм (Δλ ${f.bandwidth_um.toFixed(3)}) · смуга ${f.band}/${N_BANDS} (№${f.global_band} з 102)`
+    : "λ невідома";
+  return [fmt(Date.parse(f.date_obs)), spec, f.full ? "" : "обрізаний", f.obsid || ""].filter(Boolean).join(" · ");
+}
+
+function caption() {
+  const it = items[sel];
+  if (!it) { $("current").textContent = "—"; return; }
+  if (mode === "frames") { $("current").textContent = frameCaption(it.ref); return; }
+  const w = it.ref, methods = $("method").value + ($("cmp").checked ? ` | ${$("method2").value}` : "");
+  $("current").textContent = [w.label, `D${query.detector}`, band ? `смуга ${band}` : "усі смуги",
+                              methods, `кадрів: ${it.used ?? w.n}`].join(" · ");
+}
+
+function select(i, keepInView = true) {
+  if (!items.length) return;
+  sel = Math.max(0, Math.min(items.length - 1, i));
+  $("slider").value = sel;
+  $("counter").textContent = `${sel + 1} / ${items.length}`;
+  caption();
+  show();
+  if (keepInView && (times[sel] < win[0] || times[sel] > win[1])) {
+    const w = win[1] - win[0];
+    setWindow(times[sel] - w / 2, times[sel] + w / 2);
+  } else drawTimeline();
+}
+
+// ---------- epochs ----------
+function renderEpochChips() {
+  const month = t => new Date(t).toLocaleDateString("uk-UA", { month: "short", year: "numeric", timeZone: "UTC" });
+  $("epoch-chips").innerHTML = epochs.map((e, k) =>
+    `<button type="button" data-epoch="${k}" title="${e.label}">Епоха ${k + 1} · ${month(e.t0)} · ${e.n} кадр.</button>`).join("");
+  $("epoch-chips").querySelectorAll("button").forEach(btn => btn.onclick = () => { stop(); zoomToEpoch(+btn.dataset.epoch, true); });
+}
+
+function epochOfTime(t) {   // day windows are centered at noon, so allow a day around the epoch
+  const k = epochs.findIndex(e => t >= e.t0 - DAY && t <= e.t1 + DAY);
+  if (k >= 0 || !epochs.length) return k;
+  const d = epochs.map(e => Math.min(Math.abs(t - e.t0), Math.abs(t - e.t1)));
+  return d.indexOf(Math.min(...d));
+}
+
+function zoomToEpoch(k, selectFirst = false) {
+  const e = epochs[k];
+  if (!e) return;
+  const pad = Math.max((e.t1 - e.t0) * 0.1, 3600e3);
+  setWindow(e.t0 - pad, e.t1 + pad);
+  if (selectFirst && epochOfTime(times[sel]) !== k) {
+    const i = times.findIndex(t => epochOfTime(t) === k);
+    if (i >= 0) select(i, false);
+  }
+}
+
+function markEpochChip() {
+  const visible = epochs.map(e => e.t1 >= win[0] && e.t0 <= win[1]);
+  const single = visible.filter(Boolean).length === 1;
+  $("epoch-chips").querySelectorAll("button").forEach((btn, k) => btn.classList.toggle("on", single && visible[k]));
+}
+
+// ---------- timeline ----------
+const sx = t => TL.x0 + (t - win[0]) / (win[1] - win[0]) * (TL.x1 - TL.x0);
+const tx = x => win[0] + (x - TL.x0) / (TL.x1 - TL.x0) * (win[1] - win[0]);
+function svgX(ev) { const r = svg.getBoundingClientRect(); return (ev.clientX - r.left) / r.width * 760; }
+
+function setWindow(a, b) {
+  const minSpan = 6 * 6e4;
+  if (b - a < minSpan) { const m = (a + b) / 2; a = m - minSpan / 2; b = m + minSpan / 2; }
+  if (a < span[0]) { b += span[0] - a; a = span[0]; }
+  if (b > span[1]) { a -= b - span[1]; b = span[1]; }
+  win = [Math.max(span[0], a), Math.min(span[1], b)];
+  drawTimeline();
+}
+
+function zoom(factor, cx) {
+  const t = tx(cx);
+  setWindow(t - (t - win[0]) * factor, t + (win[1] - t) * factor);
+}
+
+function nearest(t) {
+  let lo = 0, hi = times.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (times[m] < t) lo = m + 1; else hi = m; }
+  return lo > 0 && Math.abs(times[lo - 1] - t) < Math.abs(times[lo] - t) ? lo - 1 : lo;
+}
+
+function rectX(t0, t1, pad) {
+  const x0 = Math.max(TL.x0, sx(t0) - pad), x1 = Math.min(TL.x1, sx(t1) + pad);
+  return x1 > x0 ? [x0, x1 - x0] : null;
+}
+
+function drawTimeline() {
+  if (!items.length) {
+    $("tl-epochs").innerHTML = $("tl-ticks").innerHTML = $("tl-axis").innerHTML = "";
+    $("tl-title").textContent = "—";
+    return;
+  }
+  $("tl-epochs").innerHTML = epochs.map((e, k) => {
+    const r = rectX(e.t0, e.t1, 5);
+    return r ? `<rect data-epoch="${k}" x="${r[0]}" y="14" width="${r[1]}" height="48" rx="4" fill="#1D9E75" fill-opacity="0.22" stroke="#5DCAA5" stroke-opacity="0.6"/>` : "";
+  }).join("");
+  let ticks = "";
+  items.forEach((it, i) => {
+    if (mode === "stacks") {   // each stack covers a time span
+      const r = rectX(it.t0, it.t1, 2);
+      if (r) ticks += `<rect x="${r[0]}" y="20" width="${Math.max(2, r[1])}" height="36" rx="2" fill="#F2A93B" fill-opacity="${i === sel ? 0.55 : 0.22}"/>`;
+    }
+    const x = sx(it.t);
+    if (x < TL.x0 - 1 || x > TL.x1 + 1 || i === sel) return;
+    ticks += `<line x1="${x}" y1="24" x2="${x}" y2="52" stroke="#F2A93B" stroke-width="1.3"/>`;
+  });
+  const xs = sx(times[sel]);
+  if (xs >= TL.x0 - 1 && xs <= TL.x1 + 1) ticks += `<line x1="${xs}" y1="15" x2="${xs}" y2="61" stroke="#E87A6A" stroke-width="3"/>`;
+  $("tl-ticks").innerHTML = ticks;
+  $("tl-axis").innerHTML = `<text x="${TL.x0}" y="84" font-size="11" fill="#9AA3B8">${fmt(win[0])}</text>` +
+                           `<text x="${TL.x1}" y="84" font-size="11" text-anchor="end" fill="#9AA3B8">${fmt(win[1])}</text>`;
+  const visible = times.filter(t => t >= win[0] && t <= win[1]).length;
+  $("tl-title").textContent = `Видно ${spanText(win[1] - win[0])} · ${mode === "stacks" ? "стеків" : "кадрів"} у вікні: ${visible} · епох: ${epochs.length}`;
+  markEpochChip();
+}
+
+function showTip(i) {
+  const x = sx(times[i]), txt = mode === "stacks" ? items[i].ref.label : fmt(times[i]), w = txt.length * 6.6 + 12;
+  const left = Math.min(Math.max(x - w / 2, 2), 758 - w);
+  $("tl-tiptx").textContent = txt;
+  $("tl-tipbg").setAttribute("x", left); $("tl-tipbg").setAttribute("width", w);
+  $("tl-tiptx").setAttribute("x", left + 6);
+  $("tl-tip").style.display = "";
+}
+function hideTip() { $("tl-tip").style.display = "none"; }
+
+svg.addEventListener("wheel", ev => {
+  if (!items.length) return;
+  ev.preventDefault();
+  zoom(ev.deltaY > 0 ? 1.35 : 1 / 1.35, svgX(ev));
+}, { passive: false });
+
+svg.addEventListener("pointerdown", ev => {
+  if (!items.length) return;
+  svg.focus(); stop();
+  const x = svgX(ev), i = nearest(tx(x));
+  // manual double click: the timeline is redrawn on the first click, so native dblclick does not fire
+  const now = performance.now();
+  if (now - lastDown.t < 350 && Math.abs(x - lastDown.x) < 8) {
+    lastDown = { t: 0, x: 0 };
+    zoomToEpoch(epochOfTime(times[i]));
+    return;
+  }
+  lastDown = { t: now, x };
+  dragging = true;
+  svg.setPointerCapture(ev.pointerId);
+  select(i, false); showTip(i);
+});
+svg.addEventListener("pointermove", ev => {
+  if (!items.length) return;
+  const x = svgX(ev), i = nearest(tx(x));
+  if (dragging) { if (i !== sel) select(i, false); showTip(i); }
+  else if (Math.abs(sx(times[i]) - x) < 10) showTip(i);
+  else hideTip();
+});
+svg.addEventListener("pointerup", () => { dragging = false; });
+svg.addEventListener("pointerleave", () => { if (!dragging) hideTip(); });
+
+document.addEventListener("keydown", ev => {
+  if (!items.length || ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+  if (ev.key === "ArrowRight" || ev.key === "ArrowLeft") {
+    ev.preventDefault(); stop();
+    select(sel + (ev.key === "ArrowRight" ? 1 : -1));
+    showTip(sel);
+  }
+});
+
+$("zin").onclick = () => zoom(1 / 2, sx(times[sel]));
+$("zout").onclick = () => zoom(2, sx(times[sel]));
+$("zall").onclick = () => setWindow(span[0], span[1]);
+
+// ---------- playback ----------
+function stop() { clearInterval(timer); timer = null; $("play").textContent = "▶"; }
+$("play").onclick = () => {
+  if (timer) return stop();
+  $("play").textContent = "⏸";
+  timer = setInterval(() => {
+    const inView = times.map((t, i) => [t, i]).filter(([t]) => t >= win[0] && t <= win[1]).map(([, i]) => i);
+    if (!inView.length) return;
+    const pos = inView.indexOf(sel);
+    select(inView[(pos + 1) % inView.length], false);
+  }, mode === "stacks" ? 900 : 500);
+};
+$("slider").oninput = e => { stop(); select(+e.target.value); };
+
+// ---------- spectral bands ----------
+const BAND_ORDER = [0, ...Array.from({ length: N_BANDS }, (_, k) => N_BANDS - k)];   // top: all, then 17..1
+
+function renderBands() {
+  const bands = $("bands");
+  bands.classList.toggle("off", !allFrames.length);
+  bands.setAttribute("aria-valuenow", band);
+  bands.setAttribute("aria-valuetext", band ? `смуга ${band}, кадрів ${counts[band]}` : `усі смуги, кадрів ${allFrames.length}`);
+  const max = Math.max(1, ...counts.slice(1));
+  bands.innerHTML = BAND_ORDER.map(b => {
+    const n = b ? counts[b] || 0 : allFrames.length;
+    const cls = ["band", b ? "" : "all", b && !n ? "empty" : "", b === band ? "on" : ""].filter(Boolean).join(" ");
+    const title = b ? (bandEdges.length ? `Смуга ${b} · λ ${bandEdges[b - 1].toFixed(3)}–${bandEdges[b].toFixed(3)} мкм · кадрів: ${n}` : `Смуга ${b}`)
+                    : `Усі смуги · кадрів: ${n}`;
+    const bar = b ? `<span class="track"><span class="bar" style="width:${n / max * 100}%"></span></span>` : "<span></span>";
+    return `<div class="${cls}" data-band="${b}" title="${title}"><span>${b || "усі"}</span>${bar}<span class="n">${n}</span></div>`;
+  }).join("");
+}
+
+function setBand(b) {
+  if (b && !counts[b]) return;
+  stop();
+  band = b;
+  frames = b ? allFrames.filter(f => f.band === b) : allFrames.slice();
+  renderBands();
+  saveUrl();
+  refresh(currentTime());
+}
+
+function bandAtY(clientY) {
+  const rows = [...$("bands").children];
+  const row = rows.find(r => clientY <= r.getBoundingClientRect().bottom) || rows[rows.length - 1];
+  return +row.dataset.band;
+}
+
+function stepBand(dir) {   // dir -1 = up (towards "all"), +1 = down; empty bands are skipped
+  for (let k = BAND_ORDER.indexOf(band) + dir; k >= 0 && k < BAND_ORDER.length; k += dir) {
+    const b = BAND_ORDER[k];
+    if (!b || counts[b]) return setBand(b);
+  }
+}
+
+let bandDrag = false;
+$("bands").addEventListener("pointerdown", ev => {
+  if (!allFrames.length) return;
+  bandDrag = true;
+  $("bands").setPointerCapture(ev.pointerId);
+  const b = bandAtY(ev.clientY);
+  if (b !== band) setBand(b);
+});
+$("bands").addEventListener("pointermove", ev => {
+  if (!bandDrag) return;
+  const b = bandAtY(ev.clientY);
+  if (b !== band) setBand(b);
+});
+for (const t of ["pointerup", "pointercancel"]) $("bands").addEventListener(t, () => { bandDrag = false; });
+$("bands").addEventListener("keydown", ev => {
+  if (ev.key !== "ArrowUp" && ev.key !== "ArrowDown") return;
+  ev.preventDefault(); ev.stopPropagation();
+  stepBand(ev.key === "ArrowUp" ? -1 : 1);
+});
+
+// ---------- windows and items ----------
+const currentTime = () => items.length ? times[sel] : null;
+const localInput = t => new Date(t).toISOString().slice(0, 16);   // datetime-local value, read as UTC
+
+function customWindow() {
+  const s = $("c-start").value, e = $("c-end").value;
+  if (!s || !e) return null;
+  const t0 = Date.parse(s + ":00Z"), t1 = Date.parse(e + ":59.999Z");
+  const n = frames.filter(f => { const t = Date.parse(f.date_obs); return t >= t0 && t <= t1; }).length;
+  return { start: s + ":00", end: e + ":59.999", label: `${s.replace("T", " ")} – ${e.replace("T", " ")}`, n, t0, t1 };
+}
+
+function initCustomRange() {   // default: the epoch around the current position
+  if ($("c-start").value && $("c-end").value) return;
+  const e = epochs[Math.max(0, epochOfTime(currentTime() ?? 0))];
+  if (!e) return;
+  $("c-start").value = localInput(Math.floor(e.t0 / 6e4) * 6e4);
+  $("c-end").value = localInput(Math.ceil(e.t1 / 6e4) * 6e4);
+}
+
+async function loadWindows() {
+  const p = { ...baseParams(), band };
+  epochs = (await getJson(api("/api/windows", { ...p, window: "epoch" }))).windows.map(toWin);
+  if (mode !== "stacks") return;
+  const kind = $("win-kind").value;
+  if (kind === "epoch") stackWins = epochs;
+  else if (kind === "day") stackWins = (await getJson(api("/api/windows", { ...p, window: "day" }))).windows.map(toWin);
+  else { initCustomRange(); const w = customWindow(); stackWins = w ? [w] : []; }
+}
+
+function buildItems(keepTime) {
+  items = mode === "frames"
+    ? frames.map(f => { const t = Date.parse(f.date_obs); return { t, t0: t, t1: t, ref: f }; })
+    : stackWins.map(w => ({ t: (w.t0 + w.t1) / 2, t0: w.t0, t1: w.t1, ref: w }));
+  times = items.map(it => it.t);
+  if (!items.length) {
+    drawTimeline(); setControls(false);
+    $("frame").removeAttribute("src"); $("frame2").removeAttribute("src");
+    $("msg").style.display = "flex";
+    $("msg").textContent = band ? `У смузі ${band} немає кадрів` : "Немає кадрів для показу";
+    $("counter").textContent = "0 / 0"; $("current").textContent = "—";
+    return;
+  }
+  const lo = Math.min(...items.map(it => it.t0), ...epochs.map(e => e.t0));
+  const hi = Math.max(...items.map(it => it.t1), ...epochs.map(e => e.t1));
+  const pad = Math.max((hi - lo) * 0.03, 3600e3);
+  span = [lo - pad, hi + pad];
+  win = [...span];
+  $("slider").max = items.length - 1;
+  setControls(true);
+  select(keepTime == null ? 0 : nearest(keepTime));
+}
+
+// Re-reads the windows for the current band / mode and rebuilds the timeline around time `keepTime`.
+async function refresh(keepTime = null) {
+  const seq = ++refreshSeq;
+  try {
+    await loadWindows();
+  } catch (e) {
+    if (seq === refreshSeq) status("Помилка: " + e.message, true);
+    return;
+  }
+  if (seq !== refreshSeq) return;                    // a newer band / mode change is already loading
+  renderEpochChips();
+  buildItems(keepTime);
+  preloadFrames();
+}
+
+// ---------- modes and options ----------
+function applyModeUi() {
+  $("mode-frames").setAttribute("aria-pressed", mode === "frames");
+  $("mode-stacks").setAttribute("aria-pressed", mode === "stacks");
+  $("stack-opts").hidden = mode !== "stacks";
+  $("custom-range").hidden = $("win-kind").value !== "custom";
+  $("method2").disabled = !$("cmp").checked;
+  const cmp = mode === "stacks" && $("cmp").checked;
+  $("viewer2").hidden = !cmp;
+  $("views").classList.toggle("cmp", cmp);
+}
+
+function setMode(m) {
+  if (m === mode) return;
+  stop();
+  const keep = currentTime();
+  mode = m;
+  applyModeUi(); saveUrl();
+  if (query && allFrames.length) refresh(keep);
+}
+
+$("mode-frames").onclick = () => setMode("frames");
+$("mode-stacks").onclick = () => setMode("stacks");
+$("win-kind").onchange = () => { applyModeUi(); saveUrl(); if (allFrames.length) refresh(currentTime()); };
+for (const id of ["c-start", "c-end"]) $(id).onchange = () => { saveUrl(); if (allFrames.length) refresh(currentTime()); };
+for (const id of ["method", "method2"]) $(id).onchange = () => { saveUrl(); caption(); show(); };
+$("cmp").onchange = () => { applyModeUi(); saveUrl(); caption(); show(); };
+$("same").onchange = () => { saveUrl(); preloaded = false; show(); preloadFrames(); };
+$("holes").onchange = () => { saveUrl(); preloaded = false; show(); preloadFrames(); };
+
+// ---------- search ----------
+function saveUrl() {
+  if (!query) return;
+  const p = { ...query, full: query.full ? 1 : 0 };
+  if (band) p.band = band;
+  if (mode === "stacks") {
+    p.mode = "stacks";
+    p.win = $("win-kind").value;
+    if (p.win === "custom") { p.start = $("c-start").value; p.end = $("c-end").value; }
+    p.method = $("method").value;
+    if ($("cmp").checked) p.cmp = $("method2").value;
+  }
+  if ($("same").checked) p.same = 1;
+  if ($("holes").checked) p.holes = 1;
+  history.replaceState(null, "", "?" + new URLSearchParams(p));
+}
+
+function setControls(on) {
+  for (const id of ["slider", "play", "zin", "zout", "zall"]) $(id).disabled = !on;
+}
+
+async function search(wantBand = 0) {
+  stop();
+  const prev = query;
+  query = { coords: $("coords").value.trim(), detector: $("detector").value, size: $("size").value,
+            full: !$("cropped").checked };
+  if (!query.coords) return;
+  if (!prev || prev.coords !== query.coords || prev.detector !== query.detector) limits = { frames: null, stacks: null };
+  // band numbers are per detector: keep the band only for the same detector
+  band = wantBand || (prev && prev.detector === query.detector ? band : 0);
+  saveUrl();
+  status("Шукаю кадри…");
+  allFrames = []; frames = []; items = []; times = []; epochs = []; stackWins = []; counts = []; bandEdges = [];
+  preloaded = false;
+  $("epoch-chips").innerHTML = ""; drawTimeline(); renderBands();
+  $("msg").style.display = "flex"; $("msg").textContent = "Шукаю…";
+  $("frame").removeAttribute("src"); $("frame2").removeAttribute("src");
+  setControls(false);
+  const size = +query.size;
+  $("warn").hidden = !(size > WARN_ARCMIN);
+  $("warn").textContent = `Поле ${size}′ більше за ${WARN_ARCMIN}′: вирізка захоплює кілька спектральних смуг ` +
+                          `(одна смуга ≈ 120 рядків ≈ ${BAND_ARCMIN}′ неба). λ і смуга вказані для точки цілі.`;
+  try {
+    const data = await getJson(api("/api/frames", baseParams()));
+    allFrames = data.frames;
+    bandEdges = data.band_edges_um || [];
+    counts = Array(N_BANDS + 1).fill(0);
+    allFrames.forEach(f => { if (f.band) counts[f.band]++; });
+    const hidden = data.hidden_cropped ? ` · приховано обрізаних: ${data.hidden_cropped}` : "";
+    status(`RA ${data.ra.toFixed(4)}°, Dec ${data.dec.toFixed(4)}° · знайдено кадрів: ${allFrames.length}${hidden}`);
+    if (!allFrames.length) {
+      renderBands();
+      $("msg").textContent = data.hidden_cropped
+        ? "Усі кадри обрізані — увімкни «Показати обрізані знімки» або зменш поле"
+        : "У індексі немає кадрів для цієї точки й детектора";
+      return;
+    }
+    if (band && !counts[band]) band = 0;
+    frames = band ? allFrames.filter(f => f.band === band) : allFrames.slice();
+    renderBands();
+    saveUrl();
+    await refresh(null);
+  } catch (e) {
+    status("Помилка: " + e.message, true);
+    $("msg").textContent = "Не вдалося отримати кадри";
+  }
+}
+
+$("form").onsubmit = e => { e.preventDefault(); search(); };
+$("cropped").onchange = () => { if ($("coords").value.trim()) search(); };
+renderBands();
+
+const p = new URLSearchParams(location.search);
+const METHOD_OK = v => ["minmax", "sigma", "mean"].includes(v);
+if (p.get("mode") === "stacks") mode = "stacks";
+if (["epoch", "day", "custom"].includes(p.get("win"))) $("win-kind").value = p.get("win");
+if (p.get("start")) $("c-start").value = p.get("start").slice(0, 16);
+if (p.get("end")) $("c-end").value = p.get("end").slice(0, 16);
+if (METHOD_OK(p.get("method"))) $("method").value = p.get("method");
+if (METHOD_OK(p.get("cmp"))) { $("cmp").checked = true; $("method2").value = p.get("cmp"); }
+$("same").checked = p.get("same") === "1";
+$("holes").checked = p.get("holes") === "1";
+applyModeUi();
+if (p.get("coords")) {
+  $("coords").value = p.get("coords");
+  if (p.get("detector")) $("detector").value = p.get("detector");
+  if (p.get("size")) $("size").value = p.get("size");
+  $("cropped").checked = p.get("full") === "0";
+  search(Math.min(N_BANDS, Math.max(0, parseInt(p.get("band")) || 0)));
+}
+</script>
+</body>
+</html>

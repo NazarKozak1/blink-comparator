@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Star Platinum – SPHEREx sky viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{--bg:#02040C;--hot:#FF5C7A;--warm:#FFB347;--tx:#EDEEFA;--mut:#8C9CC8;--a1:#3F7BFF;--a2:#62D0FF;--cold:#4DA3FF;--vio:#8B6CFF;--ok:#5be3a1;--glass:rgba(6,14,38,.72);--line:rgba(110,160,255,.22);color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100vh;color:var(--tx);font:400 15px/1.5 "IBM Plex Sans",system-ui,sans-serif;background:radial-gradient(900px 600px at 85% -10%,rgba(40,90,255,.3),transparent 60%),radial-gradient(700px 500px at 0 100%,rgba(20,60,170,.26),transparent 60%),var(--bg)}
+#bg{position:fixed;inset:0;width:100%;height:100%;z-index:-1}
+:root{--f:"Aber Mono","IBM Plex Mono",ui-monospace,monospace}*,*::before,*::after{font-family:var(--f)!important}
+.gr{background:linear-gradient(90deg,var(--a1),var(--a2));-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:400}
+.tile{text-align:left;background:var(--glass);border:1px solid var(--line);border-radius:18px;padding:22px;backdrop-filter:blur(12px);transition:transform .15s,border-color .15s;position:relative}
+.tile:hover{transform:translateY(-3px);border-color:var(--a2)}
+.tile .ic{font-size:30px;display:block;margin-bottom:10px;color:var(--a2)}
+.tile b{display:block;font-size:18px;font-weight:500;margin-bottom:4px}
+.tile span.d{color:var(--mut);font-size:13px;display:block}
+.tile em{position:absolute;right:16px;top:16px;font-style:normal;font-size:11px;background:var(--a1);color:#10121F;border-radius:999px;padding:1px 9px}
+.tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--mut);color:var(--mut);font-size:11px;font-style:italic;cursor:help;margin-left:6px;position:relative;vertical-align:middle;text-transform:none}
+.tip:hover,.tip:focus{color:var(--a2);border-color:var(--a2)}
+.kv{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr))}.kv span{display:block;color:var(--mut);font-size:12px}.kv b{font-size:17px;font-weight:500}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.hand{font-family:"Jelek Type","Patrick Hand",cursive;font-weight:400}
+header{display:flex;align-items:center;gap:8px;padding:12px 18px;flex-wrap:wrap}
+.logo{font-size:30px;line-height:1;cursor:pointer;background:none;border:0;color:var(--tx);padding:0;margin-right:auto}
+.logo b{font-weight:400;background:linear-gradient(90deg,var(--a1),var(--a2));-webkit-background-clip:text;background-clip:text;color:transparent}
+button{font:500 14px "IBM Plex Sans",sans-serif;cursor:pointer;color:var(--tx)}
+.ghost{background:var(--glass);border:1px solid var(--line);border-radius:999px;padding:7px 15px;backdrop-filter:blur(8px)}
+.ghost:hover,.ghost[aria-current=true]{border-color:var(--a2)}
+.ghost[aria-current=true]{color:var(--a2)}
+.ibtn{width:36px;height:36px;padding:0;font:italic 500 16px "IBM Plex Mono",monospace}
+.cta{background:linear-gradient(90deg,var(--a1),var(--a2));color:#10121F;border:0;border-radius:999px;padding:10px 22px;font-weight:600;box-shadow:0 0 24px rgba(63,123,255,.4)}
+section[hidden]{display:none}
+.panel{background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:16px;backdrop-filter:blur(12px)}
+h2{font-size:15px;font-weight:600;margin:0 0 8px}
+.note{font-size:12px;color:var(--mut)}
+.wrap{max-width:1200px;margin:0 auto;padding:0 18px 40px;display:grid;gap:16px}
+.search{display:flex;gap:8px;flex-wrap:wrap}
+.search input[type=text]{flex:1 1 240px;min-width:0;background:var(--glass);border:1px solid var(--line);color:var(--tx);border-radius:999px;padding:10px 16px;font:500 14px "IBM Plex Mono",monospace}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.chip{flex:none;background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:6px 14px;text-align:left}
+.chip small{display:block;color:var(--mut);font-size:11px}
+.chip[aria-pressed=true]{border-color:var(--a1)}
+.grid{display:grid;gap:16px}
+@media(min-width:900px){.grid{grid-template-columns:minmax(0,1fr) 330px}}
+.stage{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:1;max-height:70vh;margin:0 auto}
+.stage canvas{width:100%;height:100%;display:block;cursor:crosshair}
+.ring,.ring2{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;pointer-events:none;display:none;border:2px solid var(--a2)}
+.ring2{border-color:var(--ok);width:36px;height:36px;margin:-18px 0 0 -18px}
+.hover{position:absolute;pointer-events:none;display:none;width:220px;background:rgba(10,12,30,.92);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;z-index:3}
+.hover dl{margin:6px 0 0}
+.state{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.8);color:var(--mut);text-align:center;padding:20px}
+.cap{margin:10px 0 0;font-size:14px;text-align:center}
+.legend{font-size:12px;color:var(--mut);text-align:center;min-height:18px}
+.ctrl{display:flex;align-items:center;gap:10px;margin-top:10px}
+.play{width:42px;height:42px;border-radius:50%;border:0;background:var(--a1);color:#10121F;font-size:15px;flex:none}
+input[type=range]{width:100%;accent-color:var(--a1)}
+.tl{position:relative;height:34px;background:rgba(255,255,255,.05);border-radius:8px;margin-top:12px;cursor:pointer}
+.tl i{position:absolute;top:0;bottom:0;background:rgba(91,227,161,.18);border:1px solid rgba(91,227,161,.5);border-radius:6px}
+.tl u{position:absolute;top:8px;bottom:8px;width:2px;background:var(--a2);text-decoration:none}
+.tl s{position:absolute;top:2px;bottom:2px;width:3px;background:var(--a1);border-radius:2px}
+.eps{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.eps button{background:none;border:1px solid rgba(91,227,161,.4);border-radius:8px;padding:6px 10px;font-size:13px}
+.eps button[aria-pressed=true]{background:rgba(91,227,161,.18)}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;background:none;border:0;padding:8px 2px;font-size:13px}
+.seg button[aria-pressed=true]{background:var(--a1);color:#10121F;font-weight:600}
+label.f{display:block;font-size:13px;color:var(--mut);margin:12px 0 4px}
+select{width:100%;background:var(--glass);color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:7px}
+.sw{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:14px}
+.sw input{accent-color:var(--a1);width:18px;height:18px}
+details{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+summary{cursor:pointer;font-weight:500}
+dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:0;font-size:13px}
+dt{color:var(--mut)}dd{margin:0;text-align:right}
+.badge{display:inline-block;border-radius:999px;padding:0 9px;font-size:12px;font-weight:600}
+.known{background:rgba(91,227,161,.18);color:var(--ok)}.unk{background:rgba(255,92,122,.18);color:var(--hot)}.maybe{background:rgba(255,179,71,.2);color:var(--warm)}
+.bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:rgba(255,255,255,.06);margin:8px 0}
+.leg{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:13px;color:var(--mut)}
+.leg b{color:var(--tx);font-size:20px;font-weight:600;margin-right:5px}
+.leg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:var(--mut);font-weight:500;padding:6px 4px;border-bottom:1px solid var(--line)}
+td{padding:8px 4px;border-bottom:1px solid var(--line)}
+tr.r{cursor:pointer}tr.r:hover,tr.r[aria-selected=true]{background:rgba(98,208,255,.08)}
+svg text{fill:var(--mut);font:11px "IBM Plex Mono",monospace}
+.cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr))}
+.skywrap{position:relative;height:calc(100vh - 150px);min-height:460px;margin:0 18px 18px;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:#02030a;touch-action:none}
+#sky{width:100%;height:100%;display:block;cursor:grab}
+.frame{position:absolute;left:50%;top:50%;border:2px solid var(--a2);box-shadow:0 0 0 9999px rgba(2,3,10,.35);pointer-events:none;transform:translate(-50%,-50%)}
+.frame i{position:absolute;left:0;top:-22px;font:500 12px "IBM Plex Mono",monospace;font-style:normal;color:var(--a2);white-space:nowrap}
+.dock{position:absolute;left:12px;right:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:6px}
+.zoom button{width:36px;height:36px;padding:0;font-size:20px}
+dialog{max-height:calc(100dvh - 32px);overflow:auto;overscroll-behavior:contain;background:#07102a;color:var(--tx);border:1px solid var(--line);border-radius:18px;max-width:520px;width:calc(100% - 32px);padding:24px}
+dialog::backdrop{background:rgba(2,3,10,.7)}
+dialog ol{padding-left:20px;color:var(--mut)}dialog li b{color:var(--tx)}
+.toast{max-width:calc(100vw - 32px);text-align:center;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#07102a;border:1px solid var(--line);border-radius:999px;padding:8px 18px;display:none;z-index:9}
+:focus-visible{outline:2px solid var(--cold);outline-offset:2px}
+
+body[data-v=home] nav{display:none}
+body[data-v=home] header,body[data-v=home] #bg{display:none}
+#anim{position:fixed;inset:0;width:100%;height:100%;z-index:-1;display:none}
+body[data-v=home] #anim{display:block}
+.linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--a2);text-decoration:underline;cursor:pointer}
+html,body{overflow-x:hidden}
+body{overflow-wrap:anywhere}
+select{min-width:0}
+.dlg{display:flex;gap:14px;align-items:flex-start}.dlg h2{margin-top:0}
+.dp{flex:none;width:84px;height:84px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5))}
+@media(max-width:420px){.dlg{flex-direction:column}}
+#tipbox{position:fixed;z-index:60;display:none;max-width:min(260px,calc(100vw - 16px));background:#07102a;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.4;pointer-events:none}
+.mas{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:40;width:72px;height:72px}
+body[data-v=sphere] .mas:not(.moved){bottom:104px}
+@media(max-width:700px){body[data-v=sphere] .mas:not(.moved){bottom:150px}}
+.mbtn{display:block;background:none;border:0;padding:0;width:72px;height:72px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;filter:drop-shadow(0 4px 10px rgba(0,0,0,.6))}
+.mas.drag .mbtn{cursor:grabbing}
+.mbtn svg{width:100%;height:100%;overflow:visible;animation:bob 3.2s ease-in-out infinite;pointer-events:none}
+.mas.talk .mbtn svg{animation:hop .55s}
+.mas.drag .mbtn svg{animation:none;transform:rotate(-8deg) scale(1.08)}
+.mbub{position:absolute;bottom:calc(100% + 8px);left:0;width:max-content;max-width:min(320px,calc(100vw - 16px));max-height:calc(50dvh - 48px);overflow:auto;background:#07102a;border:1px solid var(--a2);border-radius:16px;padding:12px 14px;font-size:13px;line-height:1.5;box-shadow:0 8px 30px rgba(0,0,0,.6)}
+.mbub[hidden]{display:none}
+.mas.dn .mbub{bottom:auto;top:calc(100% + 8px)}
+.mas.r .mbub{left:auto;right:0}
+.mac{display:flex;gap:8px;align-items:center;margin-top:10px}
+.mac .cta{padding:6px 16px;font-size:13px;box-shadow:none}
+.mac .ghost{padding:5px 12px;font-size:13px}
+.dots{display:flex;gap:4px;margin-right:auto}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--line)}
+.dots i.on{background:var(--a2)}
+.eye,.dp .eye{transform-box:fill-box;transform-origin:center;animation:blink 5s infinite}
+@keyframes bob{50%{transform:translateY(-4px) rotate(-3deg)}}
+@keyframes hop{30%{transform:translateY(-14px) rotate(8deg)}}
+@keyframes blink{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}
+.spot{outline:2px dashed var(--a2);outline-offset:6px;border-radius:12px;box-shadow:0 0 0 8px rgba(98,208,255,.12)}
+@media(prefers-reduced-motion:reduce){.mbtn svg,.eye,.mas.talk .mbtn svg{animation:none}}
+.mini{display:block;width:100%;height:68px;margin-bottom:12px;background:rgba(2,6,20,.75);border:1px solid var(--line);border-radius:10px}
+.mini .ln{stroke:rgba(110,160,255,.4);fill:none;stroke-width:1}.mini .st{fill:#cfe0ff}.mini .mv{fill:var(--hot);animation:jump 3.2s steps(4) infinite}
+.mini .tlp{fill:var(--a2);transform-box:fill-box;transform-origin:left;animation:prog 3.2s steps(4) infinite}
+.mini .mer{transform-box:fill-box;transform-origin:center;animation:spin 3s linear infinite}.mini .m2{animation-delay:-1s}.mini .m3{animation-delay:-2s}
+.mini .pulse{fill:var(--a2);transform-box:fill-box;transform-origin:center;animation:pl 1.6s ease-in-out infinite}
+.mini .bar{transform-box:fill-box;transform-origin:center bottom;animation:grow 2.4s ease-in-out infinite}.mini .b2{animation-delay:-.6s}.mini .b3{animation-delay:-1.2s}.mini .b4{animation-delay:-1.8s}
+@keyframes jump{to{transform:translate(32px,-24px)}}
+@keyframes prog{from{transform:scaleX(.25)}to{transform:scaleX(1)}}
+@keyframes spin{50%{transform:scaleX(.03)}}
+@keyframes pl{50%{transform:scale(1.7);opacity:.4}}
+@keyframes grow{50%{transform:scaleY(.4)}}
+@media(prefers-reduced-motion:reduce){.mini *{animation:none!important}}
+.home{gap:40px;padding-top:12px}
+.home>*{width:100%;max-width:820px;margin-inline:auto}
+.topbar{display:flex;justify-content:flex-end}
+.hero{text-align:center}.hero h1{font-size:clamp(38px,8vw,72px);margin:0;line-height:1;font-weight:400}.hero p{color:var(--mut);max-width:560px;margin:16px auto 0}
+.bh{margin-bottom:14px}.bh h2{font-size:22px;margin:0 0 4px}.bh .note{margin:0}
+.tiles,.posts{display:grid;gap:12px}
+.tiles .tile,.posts .tile{display:grid;grid-template-columns:120px minmax(0,1fr);column-gap:16px;align-items:center;padding:14px 18px;width:100%;color:var(--tx);text-decoration:none}
+.tiles .mini,.posts .mini{margin:0;height:68px}
+.tile .tt{min-width:0}.tile .tt b{margin:0 0 2px}.posts .tile .note{display:block;margin-bottom:2px}
+[data-go=explore] .tt b{padding-right:84px}
+.foot{text-align:center;margin:0}
+@media(max-width:480px){.tiles .tile,.posts .tile{grid-template-columns:92px minmax(0,1fr);column-gap:12px;padding:12px}.tiles .mini,.posts .mini{height:60px}}
+.art{max-width:680px;margin:0 auto;width:100%;padding-top:12px}
+.art h1{font-size:clamp(26px,5vw,36px);line-height:1.15;margin:8px 0 16px;font-weight:600}
+.art h2{font-size:20px;margin:30px 0 8px}
+.art p{font-size:15px;line-height:1.75;margin:0 0 14px}.art p.lead{font-size:17px}.art .note{font-size:12px}
+.art a{color:var(--a2);text-decoration:underline;text-underline-offset:3px}
+.art a.cta{display:inline-block;color:#10121F;text-decoration:none;margin-top:4px}
+.cta-box{margin-top:32px}.cta-box h2{margin:0 0 6px}.cta-box p{margin:0 0 12px}
+.more{padding-left:18px;margin:0;line-height:1.8}
+.fig{margin:22px 0}.fig svg{display:block;width:100%;height:auto;background:rgba(2,6,20,.75);border:1px solid var(--line);border-radius:12px}
+.fig .ln{stroke:rgba(110,160,255,.45);fill:none}.fig .st{fill:#cfe0ff}
+.fig figcaption{font-size:12px;color:var(--mut);margin-top:8px}
+.posts .mini .ln{stroke:rgba(110,160,255,.45);fill:none}.posts .mini .st{fill:#cfe0ff}
+/* ---- port: elements added to the prototype, in its style ---- */
+#tipbox p{margin:0}#tipbox p+p,#tipbox ul+p{margin-top:6px}
+#tipbox.wide{max-width:min(320px,calc(100vw - 16px))}
+#tipbox ul{margin:6px 0 0;padding-left:16px}#tipbox li{margin-top:4px}#tipbox li b{color:var(--a2);font-weight:600}
+.search .tip{align-self:center}
+/* colour band picker (from demo/UX/band_selector.html; site variables, font and .ghost) */
+.cb{position:relative;font-size:12px;line-height:1.3;color:var(--tx)}
+.cb :focus-visible{outline:2px solid var(--cold);outline-offset:1px}
+.cb-head{display:flex;align-items:center;gap:8px;height:26px;margin-bottom:6px}
+.cb-read{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mut)}
+.cb-read b{color:var(--tx);font-weight:600}
+.cb-read .cb-n{color:var(--a2);font-weight:600}
+.cb-all{flex:none;height:24px;padding:0 12px;font-size:12px}
+.cb-all[aria-checked=true]{background:var(--a1);border-color:var(--a1);color:#10121F;font-weight:600}
+.cb-all[aria-disabled=true]{opacity:.4;cursor:not-allowed}
+.cb-track{display:grid;grid-template-columns:repeat(var(--n,17),1fr);height:46px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.cb-band{position:relative;appearance:none;-webkit-appearance:none;border:0;background:none;margin:0;padding:0 1px;min-width:0;height:100%;display:flex;align-items:flex-end;cursor:pointer;border-radius:4px;-webkit-tap-highlight-color:transparent}
+.cb-band i{display:block;width:100%;height:max(4px,calc(var(--f,0)*100%));border-radius:3px 3px 0 0;background:var(--a1);opacity:.4;transition:opacity .12s,background-color .12s}
+.cb[data-sel=all] .cb-band i{opacity:.85}
+.cb-band:hover i{opacity:1}
+.cb-band[aria-checked=true] i{background:var(--a2);opacity:1;box-shadow:0 0 10px rgba(98,208,255,.55)}
+.cb-band[aria-checked=true]::after{content:"";position:absolute;left:50%;bottom:-7px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--a2)}
+.cb-band[aria-disabled=true]{cursor:not-allowed}
+.cb-band[aria-disabled=true] i,.cb[data-sel=all] .cb-band[aria-disabled=true] i{height:2px;border-radius:1px;background:var(--mut);opacity:.35;box-shadow:none}
+.cb-axis{display:flex;justify-content:space-between;align-items:center;height:14px;font-size:11px;color:var(--mut)}
+.cb-mid{opacity:.7}
+.cb-tip{position:absolute;z-index:5;pointer-events:none;white-space:nowrap;padding:4px 8px;border-radius:8px;font-size:11px;color:var(--tx);background:#07102a;border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.5);opacity:0;transition:opacity .1s}
+.cb-tip.on{opacity:1}
+.cb-sk{align-self:end;margin:0 1px;height:var(--h);border-radius:3px 3px 0 0;background:var(--line);animation:cb-pulse 1s ease-in-out infinite alternate}
+@keyframes cb-pulse{from{opacity:.35}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.cb *,.cb *::after{transition:none!important;animation:none!important}}
+.tlhead{margin-top:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tlbtns{margin-left:auto;display:flex;gap:6px}
+.tlbtns button{padding:2px 12px;font-size:12px;min-width:34px}
+.tlwrap{position:relative}
+.tlwrap .tl{margin-top:6px;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
+.tl i,.tl b,.tl u,.tl s{pointer-events:none}
+.tl i{min-width:10px}
+.tl i.dim{background:rgba(91,227,161,.07);border-color:rgba(91,227,161,.25)}
+.tl i.a,.tl i.b{min-width:20px}
+.tl i.a{background:rgba(255,179,71,.22);border-color:var(--warm)}
+.tl i.b{background:rgba(98,208,255,.24);border-color:var(--a2)}
+.tl b{position:absolute;top:3px;bottom:3px;min-width:10px;background:rgba(63,123,255,.16);border:1px solid var(--line);border-radius:6px;font-weight:500}
+.tl b.cur{background:rgba(98,208,255,.3);border-color:var(--a2);box-shadow:0 0 10px rgba(98,208,255,.35)}
+.tl em{position:absolute;left:5px;right:3px;top:5px;font-style:normal;font-size:11px;line-height:1;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl i.a em,.tl i.b em{font-weight:600}
+.tl u.faint{width:1px;opacity:.45;top:20px;bottom:4px}      /* photos of a stack: lower half, labels stay readable */
+.tl s{background:var(--tx);box-shadow:0 0 6px var(--a2)}
+.tltip{position:absolute;bottom:calc(100% + 6px);transform:translateX(-50%);display:none;background:#07102a;border:1px solid var(--line);border-radius:8px;padding:3px 9px;font-size:12px;white-space:nowrap;pointer-events:none;z-index:4}
+.tlaxis{position:relative;height:18px;margin-top:3px;font-size:11px;color:var(--mut)}
+.tlaxis span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap;padding-top:4px}
+.tlaxis span::before{content:"";position:absolute;left:50%;top:0;width:1px;height:3px;background:var(--line)}
+.badge.soon{background:rgba(140,156,200,.16);color:var(--mut);font-weight:500;margin-left:6px}
+.sw input:disabled{opacity:.35;cursor:not-allowed}
+.sw label .badge{vertical-align:middle}
+.stages{display:grid;gap:10px}
+.stages.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+@media(max-width:600px){.stages.two{grid-template-columns:minmax(0,1fr)}}
+.stage[hidden]{display:none}
+.seg.sm button{padding:7px 2px;font-size:12px}
+.daterow{display:flex;gap:8px;margin-top:8px}
+.daterow[hidden]{display:none}
+.daterow input{flex:1;min-width:0;background:var(--glass);color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:6px}
+#method2{margin-top:6px}
+.chips{scrollbar-width:thin}
+.soonp{margin:0;font-size:13px;color:var(--mut)}
+
+/* aperture on the picture and the spectrum window */
+.apsvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:none;overflow:visible}
+.apsvg circle{fill:none;vector-effect:non-scaling-stroke}
+.apsvg .ap-c{stroke-width:2}.apsvg .ap-bg{stroke:var(--ok);stroke-width:1.2;stroke-dasharray:4 3;opacity:.85}
+.apsvg .ap-t{fill:var(--tx);paint-order:stroke;stroke:#000;stroke-width:.25}
+/* floating windows (windows.js): window, title bar, tabs of minimised windows */
+.fw{position:fixed;z-index:60;width:min(520px,calc(100vw - 16px));max-height:calc(100dvh - 16px);display:flex;flex-direction:column;background:#07102a;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.6);font-size:13px}
+.fw[hidden]{display:none}
+.fw-h{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 14px;border-bottom:1px solid var(--line);cursor:move;touch-action:none;user-select:none}
+.fw-t{margin-right:auto;font-weight:500;white-space:nowrap}
+.fw-btns{display:flex;gap:2px}
+.fw-btns button{background:none;border:0;border-radius:8px;color:var(--tx);font-size:15px;line-height:1;width:30px;height:28px;cursor:pointer}
+.fw-btns button:hover,.fw-btns button:focus-visible{background:rgba(98,208,255,.14);color:var(--a2)}
+.fw-b{padding:10px 14px 12px;overflow:auto}
+.wdock{position:fixed;right:12px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:58;display:flex;flex-direction:row-reverse;flex-wrap:wrap-reverse;gap:8px;max-width:calc(100vw - 110px);pointer-events:none}
+.fw-tab{pointer-events:auto;display:flex;align-items:center;background:var(--glass);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:999px;box-shadow:0 6px 24px rgba(0,0,0,.5);font-size:13px;max-width:100%}
+.fw-tab[hidden]{display:none}
+.fw-tab:hover{border-color:var(--a2)}
+.fw-tab-open{display:flex;align-items:center;gap:6px;min-width:0;background:none;border:0;color:var(--tx);padding:8px 4px 8px 16px;cursor:pointer;white-space:nowrap}
+.fw-tab-open b{font-weight:500}.fw-st{color:var(--mut);overflow:hidden;text-overflow:ellipsis}.fw-up{color:var(--a2);margin-left:4px}
+.fw-upd{font-style:normal;font-size:11px;font-weight:600;color:#10121F;background:var(--ok);border-radius:999px;padding:1px 8px}
+.fw-tab-x{background:none;border:0;color:var(--mut);padding:8px 14px 8px 8px;cursor:pointer}.fw-tab-x:hover{color:var(--hot)}
+.spw-tabs{display:flex;gap:4px}
+.spw-tabs button{white-space:nowrap;background:none;border:1px solid transparent;border-radius:999px;color:var(--mut);padding:2px 10px;font-size:12px;cursor:pointer}
+.spw-tabs button[aria-selected=true]{border-color:var(--a2);color:var(--a2)}.spw-tabs button:disabled{opacity:.45;cursor:default}
+.spw-pos{color:var(--mut);margin-bottom:6px}.spw-pos .mono{color:var(--tx)}
+.spw-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:6px 0}
+.spw-row select{max-width:190px}.spw-row .seg button{padding:5px 10px;font-size:12px;color:var(--tx)}
+.spw-rad{display:flex;align-items:center;gap:6px}.spw-rad input{width:120px}.spw-rad span{min-width:40px;color:var(--a2)}
+.spw-prog{color:var(--mut);min-height:18px;margin:6px 0}.spw-prog b{color:var(--tx);font-weight:500}
+.spw-prog .st-ok{color:var(--ok)}.spw-prog .st-run{color:var(--a2)}.spw-prog .st-err{color:var(--hot)}.spw-prog .st-wait{opacity:.5}
+.spw-w{margin:4px 0;padding:5px 9px;border-radius:8px;background:rgba(110,160,255,.08)}
+.spw-w.hot{background:rgba(255,92,122,.14);color:var(--hot)}.spw-w.warm{background:rgba(255,179,71,.14);color:var(--warm)}
+.spw-plot{position:relative;margin-top:6px}
+.spw-plot svg{width:100%;height:auto;display:block}
+.sp-grid{stroke:rgba(110,160,255,.12)}.sp-ax{fill:var(--mut);font-size:11px}
+.sp-feat{fill:rgba(255,179,71,.24)}.sp-ft{fill:var(--warm);font-size:10px}
+.sp-err{stroke-width:1;opacity:.6}.sp-a{stroke:#07102a;stroke-width:1}.sp-b{fill:#07102a;stroke:var(--vio);stroke-width:1.5}
+.sp-ul{fill:none;stroke-width:1.4}
+.spw-tip{position:absolute;display:none;pointer-events:none;background:#0b1636;border:1px solid var(--a2);border-radius:8px;padding:6px 9px;font-size:12px;line-height:1.45;width:max-content;max-width:260px;z-index:2}
+.spw-leg{display:flex;flex-wrap:wrap;gap:4px 12px;color:var(--mut);font-size:12px;margin-top:4px}
+.spw-leg i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle;font-style:normal}
+.spw-leg i.a{background:var(--tx)}.spw-leg i.b{background:#07102a;border:1.5px solid var(--vio)}.spw-leg i.ul{width:auto;height:auto;border-radius:0}
+#spw-feat ul{margin:4px 0 0;padding-left:18px}#spw-feat li b{color:var(--warm);font-weight:500}
+.spw-foot{margin:8px 0 0}
+.spw-ratio{margin:6px 0;padding:6px 9px;border-radius:8px;background:rgba(110,160,255,.08)}
+.spw-ratio table{border-collapse:collapse;margin-top:4px;font-size:12px}.spw-ratio th{font-weight:500;text-align:left;padding:1px 10px 1px 0}
+.spw-ratio td{padding:1px 10px 1px 0}.spw-fade{color:var(--warm)}.spw-bright{color:var(--a2)}
+.spw-single{color:var(--warm)}.spw-ok{color:var(--ok)}.spw-no{color:var(--hot)}
+@media(max-width:699px){.fw{left:0!important;right:0;top:auto!important;bottom:0;width:100%;max-height:62dvh;border-radius:14px 14px 0 0}.fw-h{cursor:default}.spw .fw-t{display:none}.spw-tabs{margin-right:auto}
+  .wdock{left:100px;right:8px;max-width:none;flex-direction:column;flex-wrap:nowrap;gap:4px}.fw-tab{border-radius:10px}
+  .fw-tab-open{flex:1;padding:5px 4px 5px 12px;font-size:12px}.fw-tab-x{padding:5px 12px 5px 8px}}
+</style>
+</head>
+<body>
+<canvas id="bg" aria-hidden="true"></canvas>
+<canvas id="anim" aria-hidden="true"></canvas>
+<header>
+  <button class="ghost" id="back" hidden aria-label="Home">⌂ Home</button>
+  <button class="logo hand" id="logo" tabindex="-1" aria-label="Star Platinum home">Star <b>Platinum</b></button>
+  <nav style="display:flex;gap:8px;flex-wrap:wrap" aria-label="Views">
+    <button class="ghost" data-v="explore">Explore</button><button class="ghost" data-v="sphere">Sky sphere</button><button class="ghost" data-v="analytics">Analytics</button></nav>
+  <button class="ghost" id="bcont">Support</button>
+  <button class="ghost ibtn" id="binfo" aria-label="How it works" hidden>i</button>
+</header>
+
+<section id="v-home" class="wrap home">
+  <div class="topbar"><button class="ghost" id="hcont">Support</button></div>
+  <div class="hero"><h1>Star <span class="gr">Platinum</span></h1><p>Compare infrared photos of the same patch of sky taken months apart. Anything that moves or changes stands out.</p></div>
+  <div class="blk"><div class="bh"><h2>Tools</h2><p class="note">Pick one to start.</p></div>
+    <div class="tiles">
+      <button class="tile" data-go="explore"><em>Start here</em><svg class="mini" viewBox="0 0 120 68" aria-hidden="true"><rect class="ln" x="24" y="6" width="72" height="50"/><circle class="st" cx="40" cy="20" r="1.4"/><circle class="st" cx="80" cy="16" r="1.8"/><circle class="st" cx="52" cy="44" r="1.4"/><circle class="st" cx="86" cy="42" r="1.2"/><circle class="st" cx="66" cy="30" r="1.6"/><circle class="mv" cx="34" cy="46" r="2.8"/><rect class="tlp" x="24" y="61" width="72" height="3"/></svg><div class="tt"><b>Explore the sky</b><span class="d">Enter coordinates and watch the photos play like a short film.</span></div></button>
+      <button class="tile" data-go="sphere"><svg class="mini" viewBox="0 0 120 68" aria-hidden="true"><circle class="ln" cx="60" cy="34" r="27"/><ellipse class="ln" cx="60" cy="34" rx="27" ry="8"/><ellipse class="ln" cx="60" cy="22" rx="20" ry="4"/><ellipse class="ln" cx="60" cy="46" rx="20" ry="4"/><ellipse class="mer ln" cx="60" cy="34" rx="27" ry="27"/><ellipse class="mer m2 ln" cx="60" cy="34" rx="27" ry="27"/><ellipse class="mer m3 ln" cx="60" cy="34" rx="27" ry="27"/><circle class="pulse" cx="72" cy="26" r="3"/></svg><div class="tt"><b>Sky sphere</b><span class="d">No coordinates? Spin the sky, pick a spot, and open it.</span></div></button>
+      <button class="tile" data-go="analytics"><svg class="mini" viewBox="0 0 120 68" aria-hidden="true"><line class="ln" x1="18" y1="58" x2="102" y2="58"/><rect class="bar" x="24" y="30" width="12" height="28" fill="#3F7BFF"/><rect class="bar b2" x="44" y="16" width="12" height="42" fill="#62D0FF"/><rect class="bar b3" x="64" y="38" width="12" height="20" fill="#5be3a1"/><rect class="bar b4" x="84" y="24" width="12" height="34" fill="#FF5C7A"/></svg><div class="tt"><b>Analytics</b><span class="d">Counts, known vs unknown objects and movers for your area.</span></div></button>
+    </div></div>
+  <div class="blk"><div class="bh"><h2>Blog</h2><p class="note">Plain-language guides to what you can find with these tools.</p></div><div class="posts" id="posts"></div></div>
+  <p class="note foot">Data from NASA’s SPHEREx telescope · live public data · some tools are coming soon</p>
+</section>
+
+
+<section id="v-explore" class="wrap">
+  <div class="search"><input id="q" type="text" aria-label="Coordinates" placeholder="Coordinates, e.g. 08h55m10.8s -07d14m42s"><button class="cta" id="go">Search</button><button class="ghost" data-go="random">✦ Random patch</button><button class="ghost" id="share">Share link</button><span class="tip" tabindex="0" role="note" data-t="Coordinates are a sky address, like latitude and longitude. Don’t know any? Use the Sky sphere or a random patch.">i</span></div>
+  <div id="chips" class="chips"></div>
+    <div class="grid">
+    <div class="panel">
+      <div class="stages" id="stages">
+        <div class="stage" id="stage"><canvas id="cv" width="720" height="720" aria-label="Sky image"></canvas><div class="ring" id="ring"></div><div class="ring2" id="ring2"></div><div class="hover" id="hover"></div><div class="state" id="state"></div></div>
+        <div class="stage" id="stage2" hidden><canvas id="cv2" width="720" height="720" aria-label="The same stack made with the second method"></canvas><div class="state" id="state2"></div></div>
+      </div>
+      <p class="cap"><span id="cap"></span><span class="tip" tabindex="0" role="note" data-t="Colours are illustrative: infrared light is invisible to the eye. Each camera gets its own tint.">i</span></p><div class="legend" id="lgd"></div>
+      <div class="ctrl"><button class="play" id="play" aria-label="Play">▶</button><input id="sl" type="range" min="0" max="0" value="0" aria-label="Frame"><span class="mono note" id="cnt"></span></div>
+      <div class="note tlhead">Timeline<span class="tip" tabindex="0" role="note" data-t="Each tick is one photo at its real date. Green blocks are visits (epochs); in Stacks each block is one stack. Scroll the mouse wheel over the timeline to zoom (down to minutes), drag along it to scrub through the photos, double-click a visit to zoom into it. On a phone use + and −. All shows the whole time span.">i</span><span id="tlspan" class="mono"></span><span class="tlbtns"><button class="ghost" id="tlin" type="button" aria-label="Zoom in">+</button><button class="ghost" id="tlout" type="button" aria-label="Zoom out">−</button><button class="ghost" id="tlall" type="button" hidden>All</button></span></div>
+      <div class="tlwrap"><div class="tl" id="tl" aria-label="Timeline"></div><div class="tltip" id="tltip"></div></div>
+      <div class="tlaxis" id="tlaxis" aria-hidden="true"></div>
+      <div class="eps" id="eps"></div>
+      <p class="note">Hover for a quick look, click to pin a point. Space = play, ←/→ = step.</p>
+    </div>
+    <aside style="display:grid;gap:16px;align-content:start">
+      <div class="panel"><h2>View<span class="tip r" tabindex="0" role="note" data-t="Four ways to look at the same spot:" data-list="Frames :: single photos, one at a time. ;; Stacks :: photos from one visit added together; cleaner. ;; Blink :: flips between two visits, so anything that moved jumps. ;; Diff :: shows only what changed between two visits.">i</span></h2>
+        <div class="seg" id="mode"><button data-v="frames" aria-pressed="true">Frames</button><button data-v="stacks" aria-pressed="false">Stacks</button><button data-v="blink" aria-pressed="false">Blink</button><button data-v="diff" aria-pressed="false">Diff</button></div>
+        <label class="f" for="det">Detector<span class="tip r" tabindex="0" role="note" data-t="One of six cameras on SPHEREx; each sees its own range of infrared colours. D6 is best for very cold objects.">i</span></label><select id="det"></select>
+        <label class="f" for="fov">Field size: <span class="mono" id="fovv"></span><span class="tip r" tabindex="0" role="note" data-t="How big a square of sky to show. 1′ is tiny, 30′ is about one full Moon. Above 10′ the edges of the image are seen in neighbouring colour bands.">i</span></label><input id="fov" type="range" min="1" max="30" value="6">
+        <div id="band-top"><div id="bandbox"><label class="f">Colour band<span class="tip r" id="band-tip" tabindex="0" role="note" data-t="Each photo sees this spot in one narrow infrared colour. Pick one to see only those photos.">i</span></label><div id="cb"></div></div></div>
+        <label class="f">Contrast<span class="tip r" tabindex="0" role="note" data-list="Faint :: brings out faint stars; very bright ones turn white. ;; Normal :: balanced. ;; Bright :: keeps detail inside bright stars and nebulae." data-foot="Works with Same contrast. Diff has its own fixed scale.">i</span></label><div class="seg sm" id="stretch"><button data-v="faint" aria-pressed="false">Faint</button><button data-v="normal" aria-pressed="true">Normal</button><button data-v="bright" aria-pressed="false">Bright</button></div>
+        <div id="cmp" hidden><label class="f" for="ea">Compare epochs<span class="tip r" tabindex="0" role="note" data-t="An epoch is one visit of the telescope to this spot, about every 6 months. Pick two to compare.">i</span></label><div style="display:flex;gap:8px"><select id="ea" aria-label="First epoch"></select><select id="eb" aria-label="Second epoch"></select></div></div>
+        <div class="sw"><label for="o-m">Mark moving objects<span class="badge soon">Coming soon</span><span class="tip r" tabindex="0" role="note" data-t="Coming soon: a pink box around objects that shifted between visits.">i</span></label><input type="checkbox" id="o-m" disabled></div>
+        <div class="sw"><label for="o-g">Gaia overlay<span class="badge soon">Coming soon</span><span class="tip r" tabindex="0" role="note" data-t="Coming soon: blue squares on stars listed in the Gaia star catalog.">i</span></label><input type="checkbox" id="o-g" disabled></div>
+        <div class="sw"><label for="o-w">WISE overlay<span class="badge soon">Coming soon</span><span class="tip r" tabindex="0" role="note" data-t="Coming soon: orange circles on objects seen by the WISE infrared telescope.">i</span></label><input type="checkbox" id="o-w" disabled></div>
+        <details id="adv"><summary>Advanced settings</summary>
+          <div id="band-adv"></div>
+          <label class="f">Background<span class="tip r" tabindex="0" role="note" data-t="Original: the photo as recorded. Background removed: the smooth glow of the sky behind the stars is subtracted, which makes different visits easier to compare. Stacks, Blink and Diff always have it removed.">i</span></label><div class="seg sm" id="bgseg"><button data-v="raw" aria-pressed="false">Original</button><button data-v="removed" aria-pressed="true">Background removed</button></div>
+          <label class="f" for="bgm">Background method<span class="tip r" tabindex="0" role="note" data-t="Zodiacal light is a faint glow of sunlight scattered by dust between the planets. It lies behind every infrared photo and changes with the season. Sky median (fast) subtracts the typical brightness of each photo. NASA zodiacal model (slower) subtracts the telescope team’s model of that glow; the first picture takes a few extra seconds.">i</span></label><select id="bgm"><option value="median">Sky median (fast)</option><option value="zodi">NASA zodiacal model (slower)</option></select>
+          <div class="sw"><label for="crop">Show cropped frames<span class="tip r" tabindex="0" role="note" data-t="Also show photos where your square sticks out over the edge of the picture. Part of the image will be empty.">i</span></label><input type="checkbox" id="crop"></div>
+          <div class="sw"><label for="same">Same contrast<span class="tip r" tabindex="0" role="note" data-t="Keeps black and white levels fixed across photos, so a change in brightness is real and not an automatic adjustment. Blink always uses it.">i</span></label><input type="checkbox" id="same"></div>
+          <div class="sw"><label for="holes">Show holes<span class="tip r" tabindex="0" role="note" data-t="Pixels with no data, such as overexposed star centres or bad pixels, are shown in dark red instead of being filled in.">i</span></label><input type="checkbox" id="holes"></div>
+          <label class="f" for="method">Stack method<span class="tip r" tabindex="0" role="note" data-t="How photos are added together. minmax drops the brightest and darkest value at each pixel, which removes cosmic-ray flashes. sigma drops anything far from the rest. mean simply averages.">i</span></label><select id="method"><option value="minmax">minmax: drop brightest and darkest</option><option value="sigma">sigma: drop outliers</option><option value="mean">mean: plain average</option></select>
+          <div class="sw"><label for="cmpm">Compare with a second method<span class="tip r" tabindex="0" role="note" data-t="Shows the same stack made with another method side by side, with the same contrast.">i</span></label><input type="checkbox" id="cmpm"></div>
+          <select id="method2" aria-label="Second method" disabled><option value="minmax">minmax: drop brightest and darkest</option><option value="sigma" selected>sigma: drop outliers</option><option value="mean">mean: plain average</option></select>
+          <label class="f" for="win">Stack window<span class="tip r" tabindex="0" role="note" data-t="Which photos go into one stack: one visit (epoch), one day, or your own date range. Dates are in UTC.">i</span></label><select id="win"><option value="epoch">One visit (epoch)</option><option value="day">One day (UTC)</option><option value="custom">Custom dates (UTC)</option></select>
+          <div class="daterow" id="custom" hidden><input type="datetime-local" id="c-start" aria-label="Start, UTC"><input type="datetime-local" id="c-end" aria-label="End, UTC"></div>
+        </details></div>
+      <div class="panel" id="pin"><h2>Point details<span class="tip r" tabindex="0" role="note" data-t="Details about the point you click. Checking it against star catalogs is coming soon.">i</span></h2><p class="note">Click any point in the image.</p></div>
+    </aside>
+  </div>
+</section>
+
+<section id="v-sphere" hidden>
+  <div class="skywrap"><canvas id="sky" aria-label="Sky sphere. Drag to look around."></canvas><div class="frame" id="sfr"><i id="sfl"></i></div>
+    <div class="panel mono" id="sk-read" style="position:absolute;left:12px;top:12px;padding:8px 12px;font-size:13px"></div>
+    <div class="zoom"><button class="ghost" id="zi" aria-label="Zoom in">+</button><button class="ghost" id="zo" aria-label="Zoom out">−</button></div>
+    <div class="dock"><div class="panel" style="padding:10px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label for="sk-fov" class="mono" style="font-size:13px">Field <span id="sk-fovv">6′</span></label><input id="sk-fov" type="range" min="1" max="30" value="6" style="width:130px"></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="note mono">Drag to look around · scroll to zoom<span class="tip" tabindex="0" role="note" data-t="Background stars are decorative. Rings mark real targets.">i</span></span><button class="cta" id="sk-go">Open this field</button></div></div></div>
+</section>
+
+<section id="v-analytics" class="wrap" hidden>
+  <div><h2 style="font-size:22px;margin:0" class="hand" id="an-t">Analytics</h2><p class="note" id="an-s"></p></div>
+  <div class="panel"><h2>Whole area at a glance<span class="tip" tabindex="0" role="note" data-t="A summary of the patch of sky you opened in Explore.">i</span></h2><p id="ov-h" style="margin:0 0 14px"></p><div class="kv" id="ov"></div></div>
+  <div class="cards">
+    <div class="panel"><h2>What is in this field<span class="badge soon">Coming soon</span><span class="tip" tabindex="0" role="note" data-t="Still: stars and galaxies that do not shift. Moving: shifted between visits. Variable: changes brightness. Counting them needs object detection, which is in development.">i</span></h2><p class="soonp">Object counts will appear here.</p></div>
+    <div class="panel"><h2>Known or unknown<span class="badge soon">Coming soon</span><span class="tip" tabindex="0" role="note" data-t="Known: matches an object in star catalogs. Unknown: no match, so it could be something new. Catalog matching is in development.">i</span></h2><p class="soonp">Catalog matches will appear here.</p></div>
+    <div class="panel"><h2>Epoch coverage<span class="tip" tabindex="0" role="note" data-t="When the telescope photographed this spot.">i</span></h2><dl class="mono" id="cov"></dl></div>
+  </div>
+  <div class="panel"><h2>Moving candidates<span class="badge soon">Coming soon</span><span class="tip" tabindex="0" role="note" data-t="Objects that shifted between visits, with their speed and signal. Each will get its own page.">i</span></h2><p class="soonp">A list of all objects in the field, each with its own page, is planned.</p></div>
+  <div class="cards">
+    <div class="panel"><h2>Brightness over time<span class="badge soon">Coming soon</span><span class="tip" tabindex="0" role="note" data-t="Will show if a selected object got brighter or dimmer across the photos.">i</span></h2><p class="soonp">Light curves will appear here.</p></div>
+    <div class="panel"><h2>Brightness by colour<span class="badge soon">Coming soon</span><span class="tip" tabindex="0" role="note" data-t="Will show an object’s infrared fingerprint across 102 colours.">i</span></h2><p class="soonp">Spectra will appear here.</p></div>
+  </div>
+  <p class="note">Numbers above come from the SPHEREx frame index for the field open in Explore. Panels marked Coming soon are in development.</p>
+</section>
+
+<section id="v-object" class="wrap" hidden><div class="panel"><h2>Object page<span class="badge soon">Coming soon</span></h2><p class="note" id="obj-t"></p><p class="soonp">Each object in a field will get its own page with its photos, light curve and catalog matches.</p><div class="row" style="margin-top:12px"><button class="ghost" data-go="analytics">Back to Analytics</button><button class="ghost" data-go="explore">Explore</button></div></div></section>
+
+<section id="v-article" class="wrap" hidden><article class="art" id="art"></article></section>
+
+<dialog id="d-info"><div class="dlg"><svg class="dp" viewBox="0 0 120 120" shape-rendering="crispEdges" aria-hidden="true"></svg><div><h2 class="hand" style="font-size:24px">How Star Platinum works</h2><p class="note" style="font-size:14px">The SPHEREx telescope photographs the whole sky in infrared every six months. We line up its photos of one spot so you can see what changed. Things that stay put are stars and galaxies. Things that shift are the interesting ones.</p></div></div>
+  <ol><li><b>Pick a place.</b> Type coordinates, spin the sky sphere, or press Random patch.</li><li><b>Press play.</b> Watch for a dot that jumps.</li><li><b>Try Diff.</b> White is new, black is gone.</li><li><b>Hover</b> a point for a quick look. <b>Click</b> to check if it is a known object.</li><li><b>Open Analytics</b> for counts, candidates and spectra.</li></ol>
+  <button class="ghost" onclick="this.closest('dialog').close()">Close</button></dialog>
+<dialog id="d-cont"><div class="dlg"><svg class="dp" viewBox="0 0 120 120" shape-rendering="crispEdges" aria-hidden="true"></svg><div><h2 class="hand" style="font-size:24px">Contact and support</h2><p class="note" style="font-size:14px">Hi, I’m Platy. Support is still in development, so there is no contact form yet. Until then, press me anywhere on the site for a hint.</p></div></div>
+  <button class="ghost" onclick="this.closest('dialog').close()">Close</button></dialog>
+<div class="toast" id="toast"></div>
+<div id="tipbox" role="tooltip"></div>
+<div class="mas" id="mas">
+  <div class="mbub" id="mbub" role="status" aria-live="polite" hidden><div id="mtx"></div><div class="mac" id="mac"></div></div>
+  <button class="mbtn" id="mbtn" aria-label="Platy, your guide. Click for a hint, drag or use arrow keys to move">
+    <svg viewBox="0 0 120 120" shape-rendering="crispEdges" aria-hidden="true">
+      <polygon points="60,10 73,43 109,46 82,69 90,104 60,85 30,105 38,69 11,46 47,43" fill="#5B3FD0" stroke="#0A0A1A" stroke-width="4"/>
+      <polygon points="60,85 90,104 82,69 70,76" fill="#3A2A9A"/>
+      <polygon points="47,43 11,46 38,69 44,56" fill="#7C5CF0"/>
+      <polygon points="44,46 46,26 54,36 58,10 64,36 72,24 76,46 68,42 60,50 52,42" fill="#0A0A1A"/>
+      <path d="M43 54 L56 59 M77 54 L64 59" fill="none" stroke="#0A0A1A" stroke-width="4"/>
+      <g class="eye"><ellipse cx="51" cy="65" rx="5" ry="3.5" fill="#C9F4FF" stroke="#0A0A1A" stroke-width="2"/><circle cx="52" cy="65" r="1.8" fill="#0A0A1A"/></g>
+      <g class="eye"><ellipse cx="69" cy="65" rx="5" ry="3.5" fill="#C9F4FF" stroke="#0A0A1A" stroke-width="2"/><circle cx="68" cy="65" r="1.8" fill="#0A0A1A"/></g>
+      <path d="M52 73 Q60 84 68 73 Z" fill="#0A0A1A" stroke="#0A0A1A" stroke-width="2" stroke-linejoin="round"/><path d="M56 79 Q60 82 64 79 Q60 77 56 79Z" fill="#FF7A8A"/>
+    </svg>
+  </button>
+</div>
+
+<script src="/static/app/js/ambient.js"></script>
+<script src="/static/app/js/blog.js"></script>
+<script type="module" src="/static/app/js/main.js"></script>
+<script src="/static/app/js/platy.js"></script>
+
+</body>
+</html>
