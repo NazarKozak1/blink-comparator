@@ -1,0 +1,7 @@
+blink-comparator.de {
+    encode gzip
+    reverse_proxy app:8000
+}
+www.blink-comparator.de {
+    redir https://blink-comparator.de{uri}
+}

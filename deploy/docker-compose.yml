@@ -1,0 +1,28 @@
+name: blink-comparator
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: spherex
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: spherex
+    volumes: [dbdata:/var/lib/postgresql/data]
+    restart: unless-stopped
+  app:
+    build: ..
+    environment:
+      SPHEREX_DSN: "postgresql://spherex:${DB_PASSWORD}@db:5432/spherex"
+    depends_on: [db]
+    restart: unless-stopped
+    mem_limit: 2g
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddydata:/data
+    depends_on: [app]
+    restart: unless-stopped
+volumes:
+  dbdata: {}
+  caddydata: {}

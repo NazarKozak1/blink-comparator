@@ -7,9 +7,8 @@ docs/
 cache/
 *.dump
 *.sql.gz
-docker-compose.yml
+/docker-compose.yml
 src/utils/index/old_ver/
 
 ARCHITECTURE.md
 CLAUDE.md
-
