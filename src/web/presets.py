@@ -18,5 +18,5 @@ PRESETS = (
     Preset("WISE 0855", "08h55m02.4s -7d14m32s", 6, 4, "stacks"),
     Preset("RW Aurigae", "76.9564 30.4014", 6, 6, "frames"),
     Preset("R Draconis", "248.1675 66.7550", 6, 6, "frames"),
-    Preset("Orion M42", "83.8221 -5.3911", 4, 6, "frames"),
+    Preset("Orion Nebula", "83.8221 -5.3911", 4, 6, "frames"),
 )

@@ -7,6 +7,7 @@ export const S = {
   same: false, holes: false, crop: false, stretch: "normal",
   orig: false,        // frames shown as recorded (stacks, Blink and Diff always remove the background)
   bgm: "median",      // background method: median of the photo, or the NASA zodiacal model ("zodi")
+  tool: "",          // active picture tool: "" (a click only pins a point) or "spectrum"
 };
 
 const NUM = ["det", "fov", "band", "i", "ea", "eb"];
@@ -28,6 +29,7 @@ export function readUrl() {
   S.orig = p.get("orig") === "1" || p.get("bg") === "raw";                 // bg= is the older form
   S.bgm = p.get("bgm") === "zodi" || p.get("bg") === "zodi" ? "zodi" : "median";
   if (["faint", "normal", "bright"].includes(p.get("stretch"))) S.stretch = p.get("stretch");
+  S.tool = p.get("tool") === "spectrum" ? "spectrum" : "";
   S.det = Math.min(6, Math.max(1, S.det)); S.fov = Math.min(30, Math.max(1, S.fov));
   return true;
 }
@@ -41,6 +43,7 @@ export function writeUrl() {
   if (S.stretch !== "normal") p.stretch = S.stretch;
   if (S.mode === "blink" || S.mode === "diff") { p.ea = S.ea; p.eb = S.eb; }
   if (S.cmp) p.cmp = S.cmp;
+  if (S.tool) p.tool = S.tool;
   if (S.win !== "epoch") p.win = S.win;
   if (S.win === "custom") { p.start = S.start; p.end = S.end; }
   BOOL.forEach((k) => { if (S[k]) p[k] = 1; });

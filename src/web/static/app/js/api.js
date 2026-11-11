@@ -106,6 +106,8 @@ export async function features(points) {
   return r.json();
 }
 export const motion = (p) => json("/api/motion", p);
+// Known objects of the whole field (SIMBAD + Gaia), status loading | partial | ready
+export const catalog = (p) => json("/api/catalog", p);
 
 // Spectra take the connections while they run: background pictures wait.
 let paused = 0;

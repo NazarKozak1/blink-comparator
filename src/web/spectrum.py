@@ -1,24 +1,21 @@
 """Spectrum of one point or area: aperture photometry on every frame of a detector in a time window,
-and the proper motion of the object from Gaia DR3 (IRSA TAP, cached on disk) for comparing visits."""
-import csv
-import io
+and the proper motion of the object from Gaia DR3 (ESA archive, async; SIMBAD if Gaia does not answer; cached on
+disk) for comparing visits. IRSA is not reachable from the production server and is not used."""
 import json
 import math
 import threading
 import time
-import urllib.parse
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 
+from . import catalogs
 from .catalog import find_in_window
 from .config import S3_WORKERS
 from .photometry import frame_point
 
 _pool = ThreadPoolExecutor(S3_WORKERS)
-IRSA_TAP = "https://irsa.ipac.caltech.edu/TAP/sync"
 GAIA_CACHE = Path(__file__).resolve().parents[2] / "cache" / "gaia_pm.json"
 GAIA_EPOCH = 2016.0
 FAST_PM_MAS = 100        # slower stars move < 1" in 10 years: treated as fixed
@@ -75,34 +72,23 @@ def _save_cache(c: dict):
 
 
 def gaia_motion(ra: float, dec: float, when: datetime, timeout: float = 20.0) -> dict:
-    """Fast-moving Gaia DR3 star (> 100 mas/yr) whose position at `when` is within 4" of (ra, dec).
-    Returns {found, source_id, pm_ra, pm_dec, g, separation} or {found: False}; {error} if IRSA did not answer."""
+    """Fast-moving star (> 100 mas/yr) whose position at `when` is within 4" of (ra, dec): Gaia DR3 from the ESA
+    archive, else SIMBAD. Returns {found, source_id, pm_ra, pm_dec, g, separation} or {found: False}; a failed
+    lookup is not an error for the page (it snaps the source again) and is not cached."""
     key = f"{ra:.4f},{dec:.4f}"
     with _lock:
         cache = _load_cache()
     if key in cache:
         return cache[key]
-    q = ("SELECT source_id, ra, dec, pmra, pmdec, phot_g_mean_mag FROM gaia_dr3_source "
-         f"WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra}, {dec}, {150 / 3600}))=1 "
-         f"AND pm > {FAST_PM_MAS}")
-    data = urllib.parse.urlencode({"LANG": "ADQL", "FORMAT": "csv", "QUERY": q}).encode()
     try:
-        text = urllib.request.urlopen(IRSA_TAP, data, timeout=timeout).read().decode("utf-8")
-        rows = list(csv.reader(io.StringIO(text)))[1:]      # IRSA's JSON is a VOTable dump; CSV is plain
+        out = catalogs.gaia_motion(ra, dec, when, 150, FAST_PM_MAS, GAIA_MATCH_ARCSEC, timeout)
     except Exception as e:
-        return {"found": False, "error": f"Gaia lookup failed: {e}"}
-    best = None
-    for row in rows:
+        print(f"gaia motion: ESA archive failed ({e}), trying SIMBAD")
         try:
-            sid, gra, gdec, pmra, pmdec = row[0], *(float(v) for v in row[1:5])
-            g = float(row[5]) if row[5] else None
-        except (ValueError, IndexError):
-            continue
-        r, d = shift(gra, gdec, pmra, pmdec, year(when) - GAIA_EPOCH)
-        sep = math.hypot((r - ra) * math.cos(math.radians(dec)), d - dec) * 3600
-        if sep <= GAIA_MATCH_ARCSEC and (best is None or sep < best["separation"]):
-            best = {"found": True, "source_id": str(sid), "pm_ra": pmra, "pm_dec": pmdec, "g": g, "separation": round(sep, 2)}
-    out = best or {"found": False}
+            out = catalogs.simbad_motion(ra, dec, when, FAST_PM_MAS, GAIA_MATCH_ARCSEC)
+        except Exception as e2:
+            print(f"gaia motion: SIMBAD failed too ({e2})")
+            return {"found": False}
     with _lock:
         cache = _load_cache()
         cache[key] = out

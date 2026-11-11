@@ -40,18 +40,19 @@ h2{font-size:15px;font-weight:600;margin:0 0 8px}
 .wrap{max-width:1200px;margin:0 auto;padding:0 18px 40px;display:grid;gap:16px}
 .search{display:flex;gap:8px;flex-wrap:wrap}
 .search input[type=text]{flex:1 1 240px;min-width:0;background:var(--glass);border:1px solid var(--line);color:var(--tx);border-radius:999px;padding:10px 16px;font:500 14px "IBM Plex Mono",monospace}
-.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
-.chip{flex:none;background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:6px 14px;text-align:left}
-.chip small{display:block;color:var(--mut);font-size:11px}
-.chip[aria-pressed=true]{border-color:var(--a1)}
+.qbox{position:relative;flex:1 1 240px;min-width:0;display:flex}
+.qbox input[type=text]{flex:1 1 auto}
+.qlist{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;list-style:none;margin:0;padding:6px;background:#07102a;border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.55);max-height:min(340px,55vh);overflow:auto}
+.qlist li{padding:8px 12px;border-radius:10px;cursor:pointer;display:grid;gap:2px}
+.qlist li b{font-weight:500}.qlist li small{color:var(--mut);font-size:11px}
+.qlist li:hover,.qlist li[aria-selected=true]{background:rgba(98,208,255,.12);box-shadow:inset 2px 0 0 var(--a2)}
+.qmsg{margin:8px 4px 0;font-size:13px;color:var(--warm)}
 .grid{display:grid;gap:16px}
 @media(min-width:900px){.grid{grid-template-columns:minmax(0,1fr) 330px}}
 .stage{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:1;max-height:70vh;margin:0 auto}
 .stage canvas{width:100%;height:100%;display:block;cursor:crosshair}
 .ring,.ring2{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;pointer-events:none;display:none;border:2px solid var(--a2)}
 .ring2{border-color:var(--ok);width:36px;height:36px;margin:-18px 0 0 -18px}
-.hover{position:absolute;pointer-events:none;display:none;width:220px;background:rgba(10,12,30,.92);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;z-index:3}
-.hover dl{margin:6px 0 0}
 .state{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.8);color:var(--mut);text-align:center;padding:20px}
 .cap{margin:10px 0 0;font-size:14px;text-align:center}
 .legend{font-size:12px;color:var(--mut);text-align:center;min-height:18px}
@@ -226,8 +227,6 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
 .tlaxis span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap;padding-top:4px}
 .tlaxis span::before{content:"";position:absolute;left:50%;top:0;width:1px;height:3px;background:var(--line)}
 .badge.soon{background:rgba(140,156,200,.16);color:var(--mut);font-weight:500;margin-left:6px}
-.sw input:disabled{opacity:.35;cursor:not-allowed}
-.sw label .badge{vertical-align:middle}
 .stages{display:grid;gap:10px}
 .stages.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 @media(max-width:600px){.stages.two{grid-template-columns:minmax(0,1fr)}}
@@ -237,13 +236,40 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
 .daterow[hidden]{display:none}
 .daterow input{flex:1;min-width:0;background:var(--glass);color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:6px}
 #method2{margin-top:6px}
-.chips{scrollbar-width:thin}
 .soonp{margin:0;font-size:13px;color:var(--mut)}
 
 /* aperture on the picture and the spectrum window */
 .apsvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:none;overflow:visible}
 .apsvg circle{fill:none;vector-effect:non-scaling-stroke}
 .apsvg .ap-c{stroke-width:2}.apsvg .ap-bg{stroke:var(--ok);stroke-width:1.2;stroke-dasharray:4 3;opacity:.85}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+.tool{display:inline-flex;align-items:center;gap:7px;padding:6px 14px}
+.tool svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.tool[aria-pressed=true]{border-color:var(--a2);color:var(--a2);background:rgba(98,208,255,.14);box-shadow:0 0 14px rgba(98,208,255,.28)}
+.toolhint{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:2;pointer-events:none;max-width:calc(100% - 16px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--glass);border:1px solid var(--a2);border-radius:999px;padding:4px 12px;font-size:12px;color:var(--tx);backdrop-filter:blur(8px)}
+.toolhint b{color:var(--a2);font-weight:600}.toolhint .th-t{display:none}
+@media(pointer:coarse){.toolhint .th-m{display:none}.toolhint .th-t{display:inline}}
+@media(max-width:600px){.toolhint{white-space:normal;width:max-content;text-align:center;border-radius:14px}}
+.stage.tool-spec canvas{cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cpath d='M11 1v7M11 14v7M1 11h7M14 11h7' stroke='%23000' stroke-width='3.5'/%3E%3Cpath d='M11 1v7M11 14v7M1 11h7M14 11h7' stroke='%23fff' stroke-width='1.5'/%3E%3Crect x='17' y='18' width='14' height='13' rx='3' fill='%2302040C' stroke='%2362D0FF'/%3E%3Cpath d='M19 28l3-5 2 2 3-5 2 3' stroke='%2362D0FF' stroke-width='1.6'/%3E%3C/g%3E%3C/svg%3E") 11 11, crosshair}
+.objh{font-size:13px;font-weight:600;margin:14px 0 6px;display:flex;align-items:center}
+.objs{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.objs li{border-left:2px solid var(--a2);padding:2px 0 2px 10px;display:grid;gap:1px;font-size:13px}
+.objs .ot{color:var(--tx);opacity:.85}.objs .op{color:var(--ok)}.objs .om{color:var(--mut);font-size:11px}
+.bars{display:grid;gap:7px;font-size:13px}
+.bars .tb{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 3.5em;gap:10px;align-items:center}
+.bars .bl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bars .bt{height:10px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden}
+.bars .bt i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--a1),var(--a2))}
+.bars .bn{text-align:right;color:var(--mut)}
+.big{font-size:30px;font-weight:300;line-height:1.1;margin:0 0 6px}
+.otbl{max-height:520px;overflow:auto}
+.otbl th{position:sticky;top:0;background:#07102a;text-align:left;font-weight:500;color:var(--mut);padding:6px 8px;white-space:nowrap}
+.otbl th button{background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer}
+.otbl th button[aria-sort]{color:var(--a2)}
+.otbl td{padding:5px 8px;border-top:1px solid var(--line);border-bottom:0;vertical-align:top;overflow-wrap:normal}
+.otbl td:first-child{overflow-wrap:anywhere;min-width:7em}
+.otbl td.mono{white-space:nowrap;font-size:12px}
+@media(max-width:600px){.otbl .hs{display:none}}
 .apsvg .ap-t{fill:var(--tx);paint-order:stroke;stroke:#000;stroke-width:.25}
 /* floating windows (windows.js): window, title bar, tabs of minimised windows */
 .fw{position:fixed;z-index:60;width:min(520px,calc(100vw - 16px));max-height:calc(100dvh - 16px);display:flex;flex-direction:column;background:#07102a;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.6);font-size:13px}
@@ -321,12 +347,12 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
 
 
 <section id="v-explore" class="wrap">
-  <div class="search"><input id="q" type="text" aria-label="Coordinates" placeholder="Coordinates, e.g. 08h55m10.8s -07d14m42s"><button class="cta" id="go">Search</button><button class="ghost" data-go="random">✦ Random patch</button><button class="ghost" id="share">Share link</button><span class="tip" tabindex="0" role="note" data-t="Coordinates are a sky address, like latitude and longitude. Don’t know any? Use the Sky sphere or a random patch.">i</span></div>
-  <div id="chips" class="chips"></div>
+  <div class="search"><div class="qbox"><input id="q" type="text" role="combobox" aria-label="Name or coordinates" aria-autocomplete="list" aria-expanded="false" aria-controls="qlist" autocomplete="off" spellcheck="false" placeholder="Name or coordinates, e.g. Barnard’s Star or 08h55m10.8s -07d14m42s"><ul id="qlist" class="qlist" role="listbox" aria-label="Targets" hidden></ul></div><button class="cta" id="go">Search</button><button class="ghost" data-go="random">✦ Random patch</button><button class="ghost" id="share">Share link</button><span class="tip" tabindex="0" role="note" data-t="Type the name of a challenge target (Barnard’s Star, Epsilon Indi B, WISE 0855, RW Aurigae, R Draconis, Orion Nebula) and pick it from the list, or type coordinates: a sky address, like latitude and longitude. Don’t know any? Use the Sky sphere or a random patch.">i</span></div>
+  <p id="qmsg" class="qmsg" role="status" aria-live="polite" hidden></p>
     <div class="grid">
     <div class="panel">
       <div class="stages" id="stages">
-        <div class="stage" id="stage"><canvas id="cv" width="720" height="720" aria-label="Sky image"></canvas><div class="ring" id="ring"></div><div class="ring2" id="ring2"></div><div class="hover" id="hover"></div><div class="state" id="state"></div></div>
+        <div class="stage" id="stage"><canvas id="cv" width="720" height="720" aria-label="Sky image"></canvas><div class="ring" id="ring"></div><div class="ring2" id="ring2"></div><div class="toolhint" id="toolhint" hidden><b>Spectrum tool</b> · <span class="th-m">click a star · drag for an area · Esc to exit</span><span class="th-t">tap a star · tap Spectrum again to exit</span></div><div class="state" id="state"></div></div>
         <div class="stage" id="stage2" hidden><canvas id="cv2" width="720" height="720" aria-label="The same stack made with the second method"></canvas><div class="state" id="state2"></div></div>
       </div>
       <p class="cap"><span id="cap"></span><span class="tip" tabindex="0" role="note" data-t="Colours are illustrative: infrared light is invisible to the eye. Each camera gets its own tint.">i</span></p><div class="legend" id="lgd"></div>
@@ -335,7 +361,7 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
       <div class="tlwrap"><div class="tl" id="tl" aria-label="Timeline"></div><div class="tltip" id="tltip"></div></div>
       <div class="tlaxis" id="tlaxis" aria-hidden="true"></div>
       <div class="eps" id="eps"></div>
-      <p class="note">Hover for a quick look, click to pin a point. Space = play, ←/→ = step.</p>
+      <p class="note">Click to pin a point and see the known objects there. Space = play, ←/→ = step.</p>
     </div>
     <aside style="display:grid;gap:16px;align-content:start">
       <div class="panel"><h2>View<span class="tip r" tabindex="0" role="note" data-t="Four ways to look at the same spot:" data-list="Frames :: single photos, one at a time. ;; Stacks :: photos from one visit added together; cleaner. ;; Blink :: flips between two visits, so anything that moved jumps. ;; Diff :: shows only what changed between two visits.">i</span></h2>
@@ -345,9 +371,8 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
         <div id="band-top"><div id="bandbox"><label class="f">Colour band<span class="tip r" id="band-tip" tabindex="0" role="note" data-t="Each photo sees this spot in one narrow infrared colour. Pick one to see only those photos.">i</span></label><div id="cb"></div></div></div>
         <label class="f">Contrast<span class="tip r" tabindex="0" role="note" data-list="Faint :: brings out faint stars; very bright ones turn white. ;; Normal :: balanced. ;; Bright :: keeps detail inside bright stars and nebulae." data-foot="Works with Same contrast. Diff has its own fixed scale.">i</span></label><div class="seg sm" id="stretch"><button data-v="faint" aria-pressed="false">Faint</button><button data-v="normal" aria-pressed="true">Normal</button><button data-v="bright" aria-pressed="false">Bright</button></div>
         <div id="cmp" hidden><label class="f" for="ea">Compare epochs<span class="tip r" tabindex="0" role="note" data-t="An epoch is one visit of the telescope to this spot, about every 6 months. Pick two to compare.">i</span></label><div style="display:flex;gap:8px"><select id="ea" aria-label="First epoch"></select><select id="eb" aria-label="Second epoch"></select></div></div>
-        <div class="sw"><label for="o-m">Mark moving objects<span class="badge soon">Coming soon</span><span class="tip r" tabindex="0" role="note" data-t="Coming soon: a pink box around objects that shifted between visits.">i</span></label><input type="checkbox" id="o-m" disabled></div>
-        <div class="sw"><label for="o-g">Gaia overlay<span class="badge soon">Coming soon</span><span class="tip r" tabindex="0" role="note" data-t="Coming soon: blue squares on stars listed in the Gaia star catalog.">i</span></label><input type="checkbox" id="o-g" disabled></div>
-        <div class="sw"><label for="o-w">WISE overlay<span class="badge soon">Coming soon</span><span class="tip r" tabindex="0" role="note" data-t="Coming soon: orange circles on objects seen by the WISE infrared telescope.">i</span></label><input type="checkbox" id="o-w" disabled></div>
+        <label class="f">Tools<span class="tip r" tabindex="0" role="note" data-t="Measure the spectrum of a star or an area: switch on, then click a star or drag a circle over a nebula.">i</span></label>
+        <div class="tools"><button class="ghost tool" id="t-spec" type="button" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 17h16" /><path d="M3 14l3-5 3 3 3-8 3 6 2-2" /></svg>Spectrum</button></div>
         <details id="adv"><summary>Advanced settings</summary>
           <div id="band-adv"></div>
           <label class="f">Background<span class="tip r" tabindex="0" role="note" data-t="Original: the photo as recorded. Background removed: the smooth glow of the sky behind the stars is subtracted, which makes different visits easier to compare. Stacks, Blink and Diff always have it removed.">i</span></label><div class="seg sm" id="bgseg"><button data-v="raw" aria-pressed="false">Original</button><button data-v="removed" aria-pressed="true">Background removed</button></div>
@@ -361,7 +386,7 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
           <label class="f" for="win">Stack window<span class="tip r" tabindex="0" role="note" data-t="Which photos go into one stack: one visit (epoch), one day, or your own date range. Dates are in UTC.">i</span></label><select id="win"><option value="epoch">One visit (epoch)</option><option value="day">One day (UTC)</option><option value="custom">Custom dates (UTC)</option></select>
           <div class="daterow" id="custom" hidden><input type="datetime-local" id="c-start" aria-label="Start, UTC"><input type="datetime-local" id="c-end" aria-label="End, UTC"></div>
         </details></div>
-      <div class="panel" id="pin"><h2>Point details<span class="tip r" tabindex="0" role="note" data-t="Details about the point you click. Checking it against star catalogs is coming soon.">i</span></h2><p class="note">Click any point in the image.</p></div>
+      <div class="panel" id="pin"><h2>Point details<span class="tip r" tabindex="0" role="note" data-t="Coordinates and colour of the point you click, and the known objects (SIMBAD, Gaia DR3) in that pixel. To measure its spectrum, switch on Tools → Spectrum.">i</span></h2><p class="note">Click any point in the image to see its coordinates and the known objects there.</p></div>
     </aside>
   </div>
 </section>
@@ -378,16 +403,17 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
   <div><h2 style="font-size:22px;margin:0" class="hand" id="an-t">Analytics</h2><p class="note" id="an-s"></p></div>
   <div class="panel"><h2>Whole area at a glance<span class="tip" tabindex="0" role="note" data-t="A summary of the patch of sky you opened in Explore.">i</span></h2><p id="ov-h" style="margin:0 0 14px"></p><div class="kv" id="ov"></div></div>
   <div class="cards">
-    <div class="panel"><h2>What is in this field<span class="badge soon">Coming soon</span><span class="tip" tabindex="0" role="note" data-t="Still: stars and galaxies that do not shift. Moving: shifted between visits. Variable: changes brightness. Counting them needs object detection, which is in development.">i</span></h2><p class="soonp">Object counts will appear here.</p></div>
-    <div class="panel"><h2>Known or unknown<span class="badge soon">Coming soon</span><span class="tip" tabindex="0" role="note" data-t="Known: matches an object in star catalogs. Unknown: no match, so it could be something new. Catalog matching is in development.">i</span></h2><p class="soonp">Catalog matches will appear here.</p></div>
+    <div class="panel"><h2>What is in this field<span class="tip" tabindex="0" role="note" data-t="Known objects of this patch by type, from the SIMBAD and Gaia DR3 catalogs. Gaia source: a star or galaxy measured by Gaia that has no SIMBAD entry.">i</span></h2><div id="an-types"><p class="note">Open a field in Explore first.</p></div></div>
+    <div class="panel"><h2>Known objects<span class="tip" tabindex="0" role="note" data-t="Objects of this patch listed in star catalogs. Unknown objects would be sources seen in the SPHEREx picture with no catalog match; finding them needs source detection on the image, which is not built yet.">i</span></h2><div id="an-known"><p class="note">Open a field in Explore first.</p></div></div>
     <div class="panel"><h2>Epoch coverage<span class="tip" tabindex="0" role="note" data-t="When the telescope photographed this spot.">i</span></h2><dl class="mono" id="cov"></dl></div>
   </div>
+  <div class="panel"><h2>Objects in this field<span class="tip" tabindex="0" role="note" data-t="Every known object of the patch. Click a column title to sort, click a row to pin it in Explore.">i</span></h2><div id="an-list"><p class="note">Open a field in Explore first.</p></div></div>
   <div class="panel"><h2>Moving candidates<span class="badge soon">Coming soon</span><span class="tip" tabindex="0" role="note" data-t="Objects that shifted between visits, with their speed and signal. Each will get its own page.">i</span></h2><p class="soonp">A list of all objects in the field, each with its own page, is planned.</p></div>
   <div class="cards">
     <div class="panel"><h2>Brightness over time<span class="badge soon">Coming soon</span><span class="tip" tabindex="0" role="note" data-t="Will show if a selected object got brighter or dimmer across the photos.">i</span></h2><p class="soonp">Light curves will appear here.</p></div>
     <div class="panel"><h2>Brightness by colour<span class="badge soon">Coming soon</span><span class="tip" tabindex="0" role="note" data-t="Will show an object’s infrared fingerprint across 102 colours.">i</span></h2><p class="soonp">Spectra will appear here.</p></div>
   </div>
-  <p class="note">Numbers above come from the SPHEREx frame index for the field open in Explore. Panels marked Coming soon are in development.</p>
+  <p class="note" id="an-foot">Numbers above come from the SPHEREx frame index for the field open in Explore. Panels marked Coming soon are in development.</p>
 </section>
 
 <section id="v-object" class="wrap" hidden><div class="panel"><h2>Object page<span class="badge soon">Coming soon</span></h2><p class="note" id="obj-t"></p><p class="soonp">Each object in a field will get its own page with its photos, light curve and catalog matches.</p><div class="row" style="margin-top:12px"><button class="ghost" data-go="analytics">Back to Analytics</button><button class="ghost" data-go="explore">Explore</button></div></div></section>

@@ -26,6 +26,9 @@ function ensureDock() {
   return dock;
 }
 
+// An open window has the keyboard focus: Esc goes to it first.
+export const focusedOpen = () => !!(focused && wins.get(focused)?.state === "open");
+
 // Room for the tabs at the bottom of the page, so they never cover its controls.
 function pad() {
   const n = [...wins.values()].filter((w) => w.state === "min").length;

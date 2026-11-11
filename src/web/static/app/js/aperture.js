@@ -1,4 +1,4 @@
-// Aperture on the picture: click = snap to a source, Alt+click = exactly here, drag = free circle (extended area),
+// Aperture on the picture, only while the spectrum tool is on (otherwise a click just pins a point): click = snap to a source, Alt+click = exactly here, drag = free circle (extended area),
 // wheel over the circle = radius. Drawn as an SVG over the canvas in grid pixels (1 grid pixel = 1 SPHEREx pixel).
 import { $, fracAt, gridSize, PIXEL_ARCSEC, skyAt } from "./util.js";
 
@@ -37,19 +37,19 @@ function sky(e) {
   return { fx, fy, ra, dec };
 }
 
-// c: {info(), fov(), ready(), onPick({ra, dec, fx, fy, mode, snap, r}), onRadius(r)}
+// c: {info(), fov(), ready(), active(), onPick({ra, dec, fx, fy, mode, snap, r}), onPoint({ra, dec, fx, fy}), onRadius(r)}
 export function init(c) {
   ctx = c;
   svg = document.createElementNS(NS, "svg");
   svg.setAttribute("class", "apsvg"); svg.setAttribute("preserveAspectRatio", "none"); svg.setAttribute("aria-hidden", "true");
-  $("stage").insertBefore(svg, $("hover"));
+  $("stage").insertBefore(svg, $("toolhint"));
   const cv = $("cv");
   cv.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 || !ctx.ready()) return;
     down = { x: e.clientX, y: e.clientY, id: e.pointerId, drag: false, mouse: e.pointerType === "mouse", p: sky(e) };
   });
   cv.addEventListener("pointermove", (e) => {
-    if (!down || e.pointerId !== down.id || !down.mouse) return;     // touch: drag would block page scrolling
+    if (!down || e.pointerId !== down.id || !down.mouse || !ctx.active()) return;   // touch: drag would block page scrolling
     const d = Math.hypot(e.clientX - down.x, e.clientY - down.y);
     if (!down.drag && d > 6) { down.drag = true; try { cv.setPointerCapture(e.pointerId); } catch (x) { /* gone */ } }
     if (down.drag) show(down.p.ra, down.p.dec, clampR(d * scale()), false, "extended");
@@ -57,12 +57,13 @@ export function init(c) {
   cv.addEventListener("pointerup", (e) => {
     if (!down || e.pointerId !== down.id) return;
     const d = down; down = null;
+    if (!ctx.active()) { ctx.onPoint(d.p); return; }
     if (d.drag) ctx.onPick({ ...d.p, mode: "extended", snap: false, r: ap.r });
     else ctx.onPick({ ...d.p, mode: "point", snap: !e.altKey });
   });
   cv.addEventListener("pointercancel", () => { down = null; });
   cv.addEventListener("wheel", (e) => {
-    if (!ap.on || !ctx.ready()) return;
+    if (!ap.on || !ctx.ready() || !ctx.active()) return;
     const p = sky(e), k = Math.PI / 180;
     const dist = Math.hypot((p.ra - ap.ra) * Math.cos(ap.dec * k), p.dec - ap.dec) * 3600;
     if (dist > annulus(ap.r)[1] * PIXEL_ARCSEC + 6) return;          // only over the circle; elsewhere the page scrolls

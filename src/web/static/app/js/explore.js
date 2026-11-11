@@ -1,12 +1,15 @@
-// Explore view: search, picture (canvas), Frames / Stacks / Blink / Diff, timeline, advanced settings, hover and pin.
+// Explore view: search, picture (canvas), Frames / Stacks / Blink / Diff, timeline, advanced settings, pin (with known objects of the pixel).
 import * as api from "./api.js";
 import * as TL from "./timeline.js";
 import * as AP from "./aperture.js";
 import * as SP from "./spectrum.js";
+import * as CAT from "./catalog.js";
+import { focusedOpen } from "./windows.js";
 import { BAND_INTRO, BAND_NOTES, ColourBand } from "./colourband.js";
 import { PRESETS } from "./presets.js";
+import { looksLikeCoords, suggest } from "./names.js";
 import { S, writeUrl } from "./state.js";
-import { $, DET, day, month, skyAt, hms, dms, stamp, toast } from "./util.js";
+import { $, DET, day, fracAt, month, hms, dms, stamp, toast } from "./util.js";
 
 const N_BANDS = 17;
 const PLAY_MS = { frames: 500, stacks: 900, blink: 500 };
@@ -104,6 +107,7 @@ export async function paint() {
   const seq = ++D.seq, m = S.mode;
   $("cv").dataset.done = "0";      // "1" once the picture of this paint is on screen (used by UI checks)
   controls(); caption(); TL.draw(); ring2(); AP.draw();
+  if (D.pin) pinPanel();               // objects move with the date of the shown picture
   $("stage2").hidden = !(m === "stacks" && S.cmp);
   $("stages").classList.toggle("two", !$("stage2").hidden);
   if (!D.info) return;
@@ -213,8 +217,8 @@ function controls() {
     b.disabled = b.dataset.v === "raw" && !framesOnly;
   });
   $("bgm").value = S.bgm;
+  toolUi();
   [].forEach.call($("stretch").children, (b) => b.setAttribute("aria-pressed", b.dataset.v === S.stretch));
-  [].forEach.call($("chips").children, (c) => c.setAttribute("aria-pressed", c.dataset.q === S.q));
   bands();
   // colour band: a basic setting for single photos, an advanced one for stacks, Blink and Diff
   const slot = $(S.mode === "frames" ? "band-top" : "band-adv");
@@ -298,6 +302,7 @@ export async function search(q, opts = {}) {
   controls(); caption(); TL.draw(); blank($("cv"));
   showState("Searching for frames…<br><span class='note'>about 4 seconds</span>");
   writeUrl();
+  CAT.load(S.q, S.fov);                 // known objects of the whole field, in parallel with the pictures
   let info;
   try { info = await api.frames(base()); } catch (e) {
     showState(e.status === 400 || e.status === 422
@@ -386,13 +391,7 @@ function shown() {
   return w && w.n ? { ...p, kind: "stack", start: w.start, end: w.end } : null;
 }
 
-// ---------- hover and pin ----------
-function pointAt(e) {
-  const r = $("cv").getBoundingClientRect();
-  const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
-  const [ra, dec] = skyAt(D.info.ra, D.info.dec, fx, fy, S.fov);
-  return { fx, fy, ra, dec };
-}
+// ---------- pin ----------
 function whenText() {
   const m = S.mode, it = cur();
   if (m === "frames" && it) return stamp(it.date_obs);
@@ -407,47 +406,77 @@ function colourText() {
   const w = S.mode === "stacks" ? it : S.mode === "blink" ? (D.tog ? epB() : epA()) : null;
   return w ? lamRange(w).replace(" · ", "") || "—" : "—";
 }
-function infoDl(p, short = false) {
-  const when = short ? whenText().replace(/ \d{4}(?= –)/, "").replace(" UTC", "") : whenText();
+function infoDl(p) {
   return "<dl class='mono'><dt>RA</dt><dd>" + hms(p.ra) + "</dd><dt>Dec</dt><dd>" + dms(p.dec) + "</dd>"
-    + (short ? "" : "<dt>Degrees</dt><dd>" + p.ra.toFixed(4) + " " + p.dec.toFixed(4) + "</dd>")
-    + "<dt>Date</dt><dd>" + when + "</dd><dt>Detector</dt><dd>" + DET[S.det - 1][0]
-    + (short ? "" : " · " + DET[S.det - 1][1] + "–" + DET[S.det - 1][2] + " µm") + "</dd><dt>"
-    + (short ? "Colour" : "Colour at centre") + "</dt><dd>" + colourText().replace(" µm", short ? "" : " µm") + "</dd></dl>";
+    + "<dt>Degrees</dt><dd>" + p.ra.toFixed(4) + " " + p.dec.toFixed(4) + "</dd>"
+    + "<dt>Date</dt><dd>" + whenText() + "</dd><dt>Detector</dt><dd>" + DET[S.det - 1][0]
+    + " · " + DET[S.det - 1][1] + "–" + DET[S.det - 1][2] + " µm</dd><dt>Colour at centre</dt><dd>" + colourText() + "</dd></dl>";
+}
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const mag = (o) => [o.v != null ? "V " + o.v.toFixed(1) : "", o.g != null ? "G " + o.g.toFixed(1) : ""].filter(Boolean).join(" · ");
+const OBJ_TIP = "Known objects whose catalog position, moved by its proper motion to the date of this picture, falls inside the clicked SPHEREx pixel (a 6.15″ square). From SIMBAD and Gaia DR3.";
+
+// Known objects of the clicked pixel, from the field catalog (no request of its own)
+function objectsHtml() {
+  const head = "<h3 class='objh'>Objects in this pixel" + tipHtml(OBJ_TIP).replace('class="tip"', 'class="tip r"') + "</h3>";
+  if (CAT.C.status === "loading" || CAT.C.status === "idle") return head + "<p class='note'>Checking catalogs…</p>";
+  const note = CAT.sourcesNote();
+  if (CAT.C.status === "error" || !D.info) return head + "<p class='note'>" + (note || "No catalog data.") + "</p>";
+  const px = CAT.inPixel(D.info.ra, D.info.dec, S.fov, D.pin.fx, D.pin.fy, curTime());
+  const list = px.objects.map((o) => "<li><b>" + esc(o.name) + "</b><span class='ot'>" + esc(o.type) + "</span>"
+    + (o.planets ? "<span class='op'>" + o.planets + " known planet" + (o.planets > 1 ? "s" : "") + "</span>" : "")
+    + "<span class='om mono'>" + [o.source, mag(o), o.dist.toFixed(1) + "″ from centre"].filter(Boolean).join(" · ") + "</span></li>").join("");
+  return head + (list ? "<ul class='objs'>" + list + "</ul>" : "<p class='note'>No known object in this pixel.</p>")
+    + (note ? "<p class='note'>" + note + "</p>" : "");
 }
 function ring2() {
   const r = $("ring2");
-  if (!D.pin || !D.info || AP.ap.on) { r.style.display = "none"; return; }
+  if (!D.pin || !D.info || (AP.ap.on && D.pin.tool)) { r.style.display = "none"; return; }   // the circle marks it
   r.style.cssText = "display:block;left:" + D.pin.fx * 100 + "%;top:" + D.pin.fy * 100 + "%";
 }
 function pinPanel() {
   const el = $("pin");
   if (!D.pin) {
-    el.innerHTML = "<h2>Point details" + tipHtml("Details about the point you click. Checking it against star catalogs is coming soon.").replace('class="tip"', 'class="tip r"') + "</h2><p class='note'>Click a star to see its spectrum. Alt+click measures exactly where you click; drag a circle over a nebula to measure an area.</p>";
+    el.innerHTML = "<h2>Point details" + tipHtml(PIN_TIP).replace('class="tip"', 'class="tip r"') + "</h2><p class='note'>"
+      + (S.tool ? "Click a star to measure its spectrum. Alt+click measures exactly where you click; drag a circle over a nebula to measure an area."
+        : "Click any point in the image to see its coordinates and the known objects there.") + "</p>";
     return;
   }
-  el.innerHTML = "<h2>This point</h2>" + infoDl(D.pin)
-    + "<div style='margin-top:10px'><button class='ghost' id='tosp' style='padding:4px 12px'>Spectrum</button></div>"
-    + "<div style='margin-top:10px;font-size:13px' class='row'><button class='ghost' disabled style='padding:4px 12px'>Check catalogs</button><span class='badge soon'>Coming soon</span>"
-    + tipHtml("Will look this point up in the Gaia and AllWISE star catalogs for the date of the photo. A real search takes 25–35 seconds.")
-    + "</div><div style='margin-top:10px'><button class='ghost' id='toan' style='padding:4px 12px'>Field analytics</button></div>";
+  el.innerHTML = "<h2>This point</h2>" + infoDl(D.pin) + objectsHtml()
+    + "<div style='margin-top:10px'><button class='ghost' id='tosp' style='padding:4px 12px'>Measure spectrum here</button></div>"
+    + "<div style='margin-top:10px'><button class='ghost' id='toan' style='padding:4px 12px'>Field analytics</button></div>";
   $("toan").onclick = () => { location.hash = "analytics"; };
-  $("tosp").onclick = () => SP.open({ ra: D.pin.ra, dec: D.pin.dec, mode: "point", snap: true });
+  $("tosp").onclick = () => { setTool(true); D.pin.tool = true; ring2(); SP.open({ ra: D.pin.ra, dec: D.pin.dec, mode: "point", snap: true }); };
+}
+const PIN_TIP = "Coordinates and colour of the point you click, and the known objects (SIMBAD, Gaia DR3) in that pixel. To measure its spectrum, switch on Tools → Spectrum.";
+
+// Pin a sky position of the open field (from the Analytics table)
+export function pinSky(ra, dec) {
+  if (!D.info) return;
+  const [fx, fy] = fracAt(D.info.ra, D.info.dec, ra, dec, S.fov);
+  D.pin = { fx: Math.min(0.999, Math.max(0, fx)), fy: Math.min(0.999, Math.max(0, fy)), ra, dec, tool: false };
+  pinPanel(); ring2();
+  $("pin").scrollIntoView({ block: "nearest" });
+}
+
+// ---------- spectrum tool (like Identify in QGIS): off = a click only pins a point, on = click / drag measures ----------
+function toolUi() {
+  const on = S.tool === "spectrum";
+  $("t-spec").setAttribute("aria-pressed", on);
+  $("stage").classList.toggle("tool-spec", on);
+  $("toolhint").hidden = !on || !D.info;
+  if (!D.pin) pinPanel();           // its hint depends on the tool (also when the tool came from the URL)
+}
+export function setTool(on) {
+  S.tool = on ? "spectrum" : "";
+  toolUi(); writeUrl();
 }
 
 // ---------- wiring ----------
 export function init() {
-  PRESETS.forEach((p) => {
-    const b = document.createElement("button");
-    b.className = "chip"; b.dataset.q = p.q; b.setAttribute("aria-pressed", "false");
-    b.innerHTML = p.n + "<small>" + p.h + "</small>";
-    b.onclick = () => search(p.q, { det: p.det, fov: p.fov, mode: p.mode, band: 0, i: 0, ea: 0, eb: -1 });
-    $("chips").appendChild(b);
-  });
   DET.forEach((d, k) => { const o = document.createElement("option"); o.value = k + 1; o.textContent = d[0] + " · " + d[1] + "–" + d[2] + " µm"; $("det").appendChild(o); });
 
-  $("go").onclick = () => { const q = $("q").value.trim(); if (q) search(q, { i: 0 }); };
-  $("q").onkeydown = (e) => { if (e.key === "Enter") $("go").onclick(); };
+  nameSearch();
   $("share").onclick = () => {
     try { navigator.clipboard.writeText(location.href).then(() => toast("Link copied"), () => toast("Copy the address bar link")); }
     catch (e) { toast("Copy the address bar link"); }
@@ -455,7 +484,9 @@ export function init() {
   [].forEach.call($("mode").children, (b) => { b.onclick = () => setMode(b.dataset.v); });
   $("ea").onchange = $("eb").onchange = () => { S.ea = +$("ea").value; S.eb = +$("eb").value; D.tog = 0; writeUrl(); paint(); };
   $("det").onchange = () => { if (S.q) search(S.q, { det: +$("det").value, band: 0, i: 0 }); else S.det = +$("det").value; };
+  $("fovv").textContent = $("fov").value + "′";      // before the first search controls() has not run yet
   $("fov").oninput = () => { $("fovv").textContent = $("fov").value + "′"; };
+  $("t-spec").onclick = () => setTool(!S.tool);
   $("fov").onchange = () => { if (S.q) search(S.q, { fov: +$("fov").value }); else S.fov = +$("fov").value; };
   picker = ColourBand($("cb"), { onChange: (d) => setBand(d.band) });
   [].forEach.call($("bgseg").children, (b) => { b.onclick = () => { S.orig = b.dataset.v === "raw"; D.limits = { frames: null, stacks: null }; writeUrl(); paint(); }; });
@@ -474,34 +505,70 @@ export function init() {
   document.addEventListener("keydown", (e) => {
     if (e.defaultPrevented || e.target.closest?.(".cb")) return;   // arrows on the band picker change the band only
     if ($("v-explore").hidden || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+    // Esc: an open spectrum window closes first (windows.js), the next Esc switches the tool off
+    if (e.key === "Escape" && S.tool && !focusedOpen() && !document.querySelector("dialog[open]")) { e.preventDefault(); setTool(false); return; }
     if (e.code === "Space" && e.target.tagName !== "BUTTON") { e.preventDefault(); toggle(); }
     if (S.mode === "frames" || S.mode === "stacks") {
       if (e.key === "ArrowRight") { stop(); step(1); }
       if (e.key === "ArrowLeft") { stop(); step(-1); }
     }
   });
-  const cv = $("cv");
-  cv.onpointermove = (e) => {
-    if (!D.info || !D.all.length) return;
-    const p = pointAt(e), h = $("hover"), st = $("stage").getBoundingClientRect();
-    h.innerHTML = "<b>This point</b>" + infoDl(p, true);
-    let lx = e.clientX - st.left + 14, ly = e.clientY - st.top + 14;
-    h.style.display = "block";
-    if (lx > st.width - 230) lx -= 244;
-    if (ly > st.height - 170) ly -= 180;
-    lx = Math.max(4, Math.min(lx, st.width - 224)); ly = Math.max(4, Math.min(ly, st.height - h.offsetHeight - 4));
-    h.style.cssText = "display:block;left:" + lx + "px;top:" + ly + "px";
-  };
-  cv.onpointerleave = () => { $("hover").style.display = "none"; };
   // click / Alt+click / drag on the picture: aperture.js; the spectrum window: spectrum.js
   const ready = () => !!(D.info && D.all.length);
-  AP.init({ info: () => D.info, fov: () => S.fov, ready, onRadius: (r) => SP.radius(r),
-    onPick: (p) => { D.pin = { fx: p.fx, fy: p.fy, ra: p.ra, dec: p.dec }; pinPanel(); SP.open(p); ring2(); } });
+  AP.init({ info: () => D.info, fov: () => S.fov, ready, active: () => S.tool === "spectrum", onRadius: (r) => SP.radius(r),
+    onPick: (p) => { D.pin = { fx: p.fx, fy: p.fy, ra: p.ra, dec: p.dec, tool: true }; pinPanel(); SP.open(p); ring2(); },
+    onPoint: (p) => { D.pin = { fx: p.fx, fy: p.fy, ra: p.ra, dec: p.dec, tool: false }; pinPanel(); ring2(); } });
   SP.init({ epochs: () => D.epochs, epochIndex: () => (D.epochs.length ? nearest(D.epochs, curTime(), (e) => (e.t0 + e.t1) / 2) : -1),
     shown, onClose: () => ring2() });
   TL.init({ D, items, curTime, select, selectB, stop });
-  pinPanel();
-  showState("Type coordinates, pick a target above, or press ✦ Random patch.");
+  CAT.onChange(() => { if (D.pin) pinPanel(); });
+  toolUi();
+  showState("Type a name (e.g. Barnard’s Star) or coordinates, or press ✦ Random patch.");
+}
+
+// ---------- search box: target names with autocomplete (names.js), or coordinates ----------
+function nameSearch() {
+  const box = $("q"), list = $("qlist");
+  let sug = [], active = -1;
+  const msg = (t) => { $("qmsg").textContent = t || ""; $("qmsg").hidden = !t; };
+  const close = () => { list.hidden = true; box.setAttribute("aria-expanded", "false"); box.removeAttribute("aria-activedescendant"); active = -1; };
+  function show() {
+    if (!sug.length) { close(); return; }
+    list.innerHTML = sug.map((s, k) => "<li role='option' id='qo" + k + "' aria-selected='" + (k === active) + "'><b>" + s.t.n
+      + "</b><small>" + s.t.h + (s.name !== s.t.n ? " · " + s.name : "") + "</small></li>").join("");
+    list.hidden = false; box.setAttribute("aria-expanded", "true");
+    if (active >= 0) { box.setAttribute("aria-activedescendant", "qo" + active); list.children[active].scrollIntoView({ block: "nearest" }); }
+    else box.removeAttribute("aria-activedescendant");
+    [].forEach.call(list.children, (li, k) => {
+      li.onpointerdown = (e) => e.preventDefault();          // keep the focus in the box
+      li.onclick = () => pick(sug[k]);
+    });
+  }
+  // a target: its settings, as the preset buttons did, and its coordinates for the current epoch
+  function pick(s) {
+    close(); msg("");
+    const t = s.t;
+    search(t.q, { det: t.det, fov: t.fov, mode: t.mode, band: 0, i: 0, ea: 0, eb: -1 });
+  }
+  function submit() {
+    const text = box.value.trim();
+    if (!text) return;
+    if (looksLikeCoords(text)) { close(); msg(""); search(text, { i: 0 }); return; }
+    const s = active >= 0 ? sug[active] : suggest(text, PRESETS)[0];
+    if (s) pick(s);
+    else { close(); msg("Unknown name — try coordinates"); }
+  }
+  box.addEventListener("input", () => { msg(""); sug = suggest(box.value, PRESETS); active = -1; show(); });
+  box.addEventListener("focus", () => { if (box.value && box.value !== S.q) { sug = suggest(box.value, PRESETS); show(); } });
+  box.addEventListener("blur", close);
+  box.addEventListener("keydown", (e) => {
+    const open = !list.hidden && sug.length;
+    if (e.key === "ArrowDown" && open) { e.preventDefault(); active = (active + 1) % sug.length; show(); }
+    else if (e.key === "ArrowUp" && open) { e.preventDefault(); active = active <= 0 ? sug.length - 1 : active - 1; show(); }
+    else if (e.key === "Enter") { e.preventDefault(); submit(); }
+    else if (e.key === "Escape" && open) { e.preventDefault(); close(); }   // also keeps windows.js from closing a window
+  });
+  $("go").onclick = submit;
 }
 
 async function setBand(b) {

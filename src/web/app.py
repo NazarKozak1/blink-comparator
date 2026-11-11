@@ -8,10 +8,12 @@ From the project root:
     (without an activated venv: .venv/Scripts/python -m uvicorn src.web.app:app --reload)
 Then open http://localhost:8000/ (new interface, static/app) or http://localhost:8000/legacy (old one).
 """
+import math
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -29,7 +31,7 @@ from .image_processing import (Rendered, cutout_png, diff_png, grid_wcs, grid_wo
                                significance, stack_png, subtract_background)
 from .spectral import band_edges, band_of, wavelength
 from .stacks import build_stack, stack_sigma
-from . import photometry, spectrum as spec
+from . import catalogs, photometry, spectrum as spec
 from .windows import WINDOW_KINDS, as_utc, split, spread_over_epochs
 from . import warmup
 
@@ -140,6 +142,25 @@ def random_point(detector: int = Query(6, ge=1, le=6)):
         raise HTTPException(503, "index sample was empty, try again")
     ra, dec = found
     return {"ra": ra, "dec": dec, "coords": f"{ra:.5f} {dec:.5f}"}
+
+
+@app.get("/api/catalog")
+def catalog(coords: str, size: float = Query(6.0, gt=0.5, le=60), date: datetime | None = None,
+            wait: float = Query(0.0, ge=0, le=30)):
+    """Known objects of the whole cutout: SIMBAD and Gaia DR3, asked once per field in the background and cached.
+    Positions are moved to `date` (default now) by the proper motion. wait > 0 holds the answer until both catalogs
+    are done or the time is up. status: loading (nothing yet) | partial (one catalog) | ready (both done or failed)."""
+    coord = _coord(coords)
+    half_deg = (half_size_px(size) + 0.5) * PIXEL_ARCSEC / 3600
+    f = catalogs.get_field(coord.ra.deg, coord.dec.deg, half_deg * math.sqrt(2))
+    if wait:
+        f.done.wait(wait)
+    when = as_utc(date) if date else datetime.now(timezone.utc)
+    t = time.time()
+    objs = catalogs.field_objects(f, when, half_deg)
+    return {"status": f.status, "catalogs": dict(f.state), "seconds": dict(f.seconds), "ra": f.ra, "dec": f.dec,
+            "radius_deg": round(f.r, 6), "date": when.isoformat(), "epoch_year": round(catalogs.year_of(when), 4),
+            "n": len(objs), "merge_seconds": round(time.time() - t, 3), "objects": objs}
 
 
 @app.get("/api/frames")
@@ -379,5 +400,5 @@ def features(body: dict = Body(...)):
 
 @app.get("/api/motion")
 def motion(ra: float, dec: float, date: datetime):
-    """Proper motion of a fast star (> 100 mas/yr) at this position on this date, from Gaia DR3 at IRSA."""
+    """Proper motion of a fast star (> 100 mas/yr) at this position on this date: Gaia DR3 (ESA), else SIMBAD."""
     return spec.gaia_motion(round(ra, 4), round(dec, 4), as_utc(date))
