@@ -4,12 +4,13 @@ import * as TL from "./timeline.js";
 import * as AP from "./aperture.js";
 import * as SP from "./spectrum.js";
 import * as CAT from "./catalog.js";
+import { magOf, searchRadius } from "./nearby.js";
 import { focusedOpen } from "./windows.js";
 import { BAND_INTRO, BAND_NOTES, ColourBand } from "./colourband.js";
 import { PRESETS } from "./presets.js";
 import { looksLikeCoords, suggest } from "./names.js";
 import { S, writeUrl } from "./state.js";
-import { $, DET, day, fracAt, month, hms, dms, stamp, toast } from "./util.js";
+import { $, DET, day, fracAt, gridSize, month, hms, dms, PIXEL_ARCSEC, skyAt, stamp, toast } from "./util.js";
 
 const N_BANDS = 17;
 const PLAY_MS = { frames: 500, stacks: 900, blink: 500 };
@@ -21,6 +22,7 @@ const D = {
   wins: [],            // stack windows (epochs, days or one custom range)
   limits: { frames: null, stacks: null },
   tog: 0, play: false, timer: null, seq: 0, pin: null, used: null, scale: null,
+  mark: null,                // name of the catalog object marked with a dot on the picture
   view: null,                // timeline zoom: [t0, t1] in ms, null = whole span
   dir: 1,                    // last stepping direction: background loading looks that way first
 };
@@ -52,6 +54,7 @@ function cross(x, w) {
 }
 function draw(cv, img, tint) {
   const x = cv.getContext("2d"), w = cv.width;
+  if (cv.id === "cv") D.shown = img;           // the picture itself, without tint and crosshair (for climb())
   x.globalCompositeOperation = "source-over";
   x.drawImage(img, 0, 0, w, w);
   if (tint) {   // camera colour, as in the prototype (illustrative)
@@ -106,10 +109,11 @@ function schedule() {
 export async function paint() {
   const seq = ++D.seq, m = S.mode;
   $("cv").dataset.done = "0";      // "1" once the picture of this paint is on screen (used by UI checks)
-  controls(); caption(); TL.draw(); ring2(); AP.draw();
+  controls(); caption(); TL.draw(); ring2(); AP.draw(); markDot();
   if (D.pin) pinPanel();               // objects move with the date of the shown picture
   $("stage2").hidden = !(m === "stacks" && S.cmp);
   $("stages").classList.toggle("two", !$("stage2").hidden);
+  fitStage();
   if (!D.info) return;
   if (!D.all.length) return;
   try {
@@ -295,7 +299,7 @@ export async function search(q, opts = {}) {
   const prev = { q: S.q, det: S.det };
   Object.assign(S, opts, { q: q.trim() });
   if (!S.q) return;
-  if (prev.q !== S.q || prev.det !== S.det) { D.limits = { frames: null, stacks: null }; D.pin = null; pinPanel(); }
+  if (prev.q !== S.q || prev.det !== S.det) { D.limits = { frames: null, stacks: null }; D.pin = null; D.mark = null; pinPanel(); }
   if (prev.q !== S.q) SP.close();
   D.info = null; D.all = []; D.frames = []; D.epochs = []; D.wins = []; D.seq++; D.view = null;
   api.cancelBackground();
@@ -412,23 +416,58 @@ function infoDl(p) {
     + "<dt>Date</dt><dd>" + whenText() + "</dd><dt>Detector</dt><dd>" + DET[S.det - 1][0]
     + " · " + DET[S.det - 1][1] + "–" + DET[S.det - 1][2] + " µm</dd><dt>Colour at centre</dt><dd>" + colourText() + "</dd></dl>";
 }
-const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const mag = (o) => [o.v != null ? "V " + o.v.toFixed(1) : "", o.g != null ? "G " + o.g.toFixed(1) : ""].filter(Boolean).join(" · ");
-const OBJ_TIP = "Known objects whose catalog position, moved by its proper motion to the date of this picture, falls inside the clicked SPHEREx pixel (a 6.15″ square). From SIMBAD and Gaia DR3.";
+const OBJ_TIP = "Known objects near the point you clicked, from SIMBAD and Gaia DR3, at their positions on the date of this picture (moved by their proper motion). The search radius grows with the field of view: the size of a star image or about 10 screen pixels, whichever is larger, at most 60″; a bright star also counts from further away, as its image is wider. Brightest in the infrared first: K (2MASS), else G (Gaia). Click a name to mark its exact position.";
 
-// Known objects of the clicked pixel, from the field catalog (no request of its own)
+// PSF width of what is shown: the frame's, or the median of the photos of the stack / visit
+function psfNow() {
+  const it = cur(), m = S.mode;
+  if (m === "frames") return it?.psf_fwhm || null;
+  const w = m === "stacks" ? it : m === "blink" ? (D.tog ? epB() : epA()) : epB();
+  if (!w) return null;
+  const v = D.frames.filter((f) => f.t >= w.t0 && f.t <= w.t1 && f.psf_fwhm).map((f) => f.psf_fwhm).sort((a, b) => a - b);
+  return v.length ? v[v.length >> 1] : null;
+}
+const radiusNow = () => searchRadius(S.fov, $("stage").getBoundingClientRect().width || 500, psfNow());
+
+// Known objects near the clicked point, from the field catalog (no request of its own)
 function objectsHtml() {
-  const head = "<h3 class='objh'>Objects in this pixel" + tipHtml(OBJ_TIP).replace('class="tip"', 'class="tip r"') + "</h3>";
+  const r = radiusNow();
+  const head = "<h3 class='objh'>Objects near this point <span class='note mono'>(radius " + r.toFixed(0) + "″)</span>"
+    + tipHtml(OBJ_TIP).replace('class="tip"', 'class="tip r"') + "</h3>";
   if (CAT.C.status === "loading" || CAT.C.status === "idle") return head + "<p class='note'>Checking catalogs…</p>";
   const note = CAT.sourcesNote();
   if (CAT.C.status === "error" || !D.info) return head + "<p class='note'>" + (note || "No catalog data.") + "</p>";
-  const px = CAT.inPixel(D.info.ra, D.info.dec, S.fov, D.pin.fx, D.pin.fy, curTime());
-  const list = px.objects.map((o) => "<li><b>" + esc(o.name) + "</b><span class='ot'>" + esc(o.type) + "</span>"
-    + (o.planets ? "<span class='op'>" + o.planets + " known planet" + (o.planets > 1 ? "s" : "") + "</span>" : "")
-    + "<span class='om mono'>" + [o.source, mag(o), o.dist.toFixed(1) + "″ from centre"].filter(Boolean).join(" · ") + "</span></li>").join("");
-  return head + (list ? "<ul class='objs'>" + list + "</ul>" : "<p class='note'>No known object in this pixel.</p>")
+  const psf = psfNow(), peakR = Math.max(psf || 6.6, 2 * PIXEL_ARCSEC);
+  const list = CAT.near(D.pin, r, curTime(), psf, D.pin.peaks, peakR).map((o) => {
+    const m = magOf(o);
+    return "<li><button type='button' class='orow' data-n='" + esc(o.name) + "' aria-pressed='" + (o.name === D.mark) + "' "
+      + "title='Mark its position on the picture'><b>" + esc(o.name) + "</b><span class='ot'>" + esc(o.type) + "</span>"
+      + (o.planets ? "<span class='op'>" + o.planets + " known planet" + (o.planets > 1 ? "s" : "") + "</span>" : "")
+      + "<span class='om mono'>" + [m ? m[0] + " " + m[1].toFixed(1) : "", o.dist.toFixed(1) + "″ from click", o.source].filter(Boolean).join(" · ")
+      + "</span></button></li>";
+  }).join("");
+  return head + (list ? "<ul class='objs'>" + list + "</ul>" : "<p class='note'>No known object nearby.</p>")
     + (note ? "<p class='note'>" + note + "</p>" : "");
 }
+
+// A small dot at the exact position of the marked object on the date of the picture
+function markDot() {
+  const el = $("odot");
+  const o = D.mark && D.info ? CAT.objectsAt(curTime()).find((x) => x.name === D.mark) : null;
+  if (!o) { el.style.display = "none"; return; }
+  const [fx, fy] = fracAt(D.info.ra, D.info.dec, o.ra, o.dec, S.fov);
+  if (fx < 0 || fx > 1 || fy < 0 || fy > 1) { el.style.display = "none"; return; }
+  el.style.cssText = "display:block;left:" + fx * 100 + "%;top:" + fy * 100 + "%";
+}
+function onObjectClick(e) {
+  const b = e.target.closest(".orow");
+  if (!b) return;
+  D.mark = D.mark === b.dataset.n ? null : b.dataset.n;
+  pinPanel(); markDot();
+}
+
 function ring2() {
   const r = $("ring2");
   if (!D.pin || !D.info || (AP.ap.on && D.pin.tool)) { r.style.display = "none"; return; }   // the circle marks it
@@ -450,12 +489,61 @@ function pinPanel() {
 }
 const PIN_TIP = "Coordinates and colour of the point you click, and the known objects (SIMBAD, Gaia DR3) in that pixel. To measure its spectrum, switch on Tools → Spectrum.";
 
+// Luminance of the shown picture as sent by the server (no tint, no crosshair), kept per picture
+const lumCache = new WeakMap();
+function pictureLum() {
+  const img = D.shown;
+  if (!img) return null;
+  let c = lumCache.get(img);
+  if (!c) {
+    const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height, oc = document.createElement("canvas");
+    oc.width = W; oc.height = H;
+    const x = oc.getContext("2d", { willReadFrequently: true });
+    x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, W, H).data, l = new Float32Array(W * H);
+    for (let i = 0; i < W * H; i++) l[i] = 0.3 * d[4 * i] + 0.59 * d[4 * i + 1] + 0.11 * d[4 * i + 2];
+    c = { W, H, l };
+    lumCache.set(img, c);
+  }
+  return c;
+}
+
+// The brightest point of the star image a click fell on: climb the picture's brightness (mean over a box of
+// (2 box + 1)^2 pixels) from the click to a local maximum, at most 60" away; null if the click is not on a blob.
+// A small box stops at faint stars, a large one smooths them away on the wing of a bright star and reaches its core.
+function climb(fx, fy, box = 1) {
+  let p;
+  try { p = D.info && pictureLum(); } catch (e) { return null; }
+  if (!p) return null;
+  const { W, H, l } = p;
+  const L = (x, y) => { let v = 0; for (let j = -box; j <= box; j++) for (let i = -box; i <= box; i++)
+    v += l[Math.min(H - 1, Math.max(0, y + j)) * W + Math.min(W - 1, Math.max(0, x + i))]; return v; };
+  const x0 = Math.min(W - 1, Math.floor(fx * W)), y0 = Math.min(H - 1, Math.floor(fy * H)), maxPx = 60 / (S.fov * 60) * W;
+  let x = x0, y = y0, v = L(x, y);
+  for (let n = 0; n < 400; n++) {
+    let bx = x, by = y, bv = v;
+    for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) { const w = L(x + i, y + j); if (w > bv) { bv = w; bx = x + i; by = y + j; } }
+    if (bx === x && by === y) break;
+    x = bx; y = by; v = bv;
+    if (Math.hypot(x - x0, y - y0) > maxPx) return null;
+  }
+  if (x === x0 && y === y0) return null;
+  const [ra, dec] = skyAt(D.info.ra, D.info.dec, (x + 0.5) / W, (y + 0.5) / H, S.fov);
+  return { ra, dec };
+}
+
+function newPin(p, tool) {
+  D.pin = { fx: p.fx, fy: p.fy, ra: p.ra, dec: p.dec, tool, peaks: [climb(p.fx, p.fy, 1), climb(p.fx, p.fy, 4)] }; D.mark = null;
+  pinPanel(); ring2(); markDot();
+  CAT.retryGaia();                      // Gaia failed for this field: one more try, on the first click
+}
+
 // Pin a sky position of the open field (from the Analytics table)
 export function pinSky(ra, dec) {
   if (!D.info) return;
   const [fx, fy] = fracAt(D.info.ra, D.info.dec, ra, dec, S.fov);
-  D.pin = { fx: Math.min(0.999, Math.max(0, fx)), fy: Math.min(0.999, Math.max(0, fy)), ra, dec, tool: false };
-  pinPanel(); ring2();
+  D.pin = { fx: Math.min(0.999, Math.max(0, fx)), fy: Math.min(0.999, Math.max(0, fy)), ra, dec, tool: false }; D.mark = null;
+  pinPanel(); ring2(); markDot();
   $("pin").scrollIntoView({ block: "nearest" });
 }
 
@@ -507,6 +595,8 @@ export function init() {
     if ($("v-explore").hidden || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
     // Esc: an open spectrum window closes first (windows.js), the next Esc switches the tool off
     if (e.key === "Escape" && S.tool && !focusedOpen() && !document.querySelector("dialog[open]")) { e.preventDefault(); setTool(false); return; }
+    // the next Esc brings the timeline back to all epochs
+    if (e.key === "Escape" && D.view && !focusedOpen() && !document.querySelector("dialog[open]")) { e.preventDefault(); TL.showAll(); return; }
     if (e.code === "Space" && e.target.tagName !== "BUTTON") { e.preventDefault(); toggle(); }
     if (S.mode === "frames" || S.mode === "stacks") {
       if (e.key === "ArrowRight") { stop(); step(1); }
@@ -516,14 +606,48 @@ export function init() {
   // click / Alt+click / drag on the picture: aperture.js; the spectrum window: spectrum.js
   const ready = () => !!(D.info && D.all.length);
   AP.init({ info: () => D.info, fov: () => S.fov, ready, active: () => S.tool === "spectrum", onRadius: (r) => SP.radius(r),
-    onPick: (p) => { D.pin = { fx: p.fx, fy: p.fy, ra: p.ra, dec: p.dec, tool: true }; pinPanel(); SP.open(p); ring2(); },
-    onPoint: (p) => { D.pin = { fx: p.fx, fy: p.fy, ra: p.ra, dec: p.dec, tool: false }; pinPanel(); ring2(); } });
+    onPick: (p) => { newPin(p, true); SP.open(p); },
+    onPoint: (p) => newPin(p, false) });
+  $("pin").addEventListener("click", onObjectClick);
   SP.init({ epochs: () => D.epochs, epochIndex: () => (D.epochs.length ? nearest(D.epochs, curTime(), (e) => (e.t0 + e.t1) / 2) : -1),
     shown, onClose: () => ring2() });
   TL.init({ D, items, curTime, select, selectB, stop });
-  CAT.onChange(() => { if (D.pin) pinPanel(); });
+  CAT.onChange(() => { if (D.pin) pinPanel(); markDot(); });
+  viewFold();
+  addEventListener("resize", fitStage);
   toolUi();
   showState("Type a name (e.g. Barnard’s Star) or coordinates, or press ✦ Random patch.");
+}
+
+// ---------- layout: the picture fits the window height (two columns, from 900 px) ----------
+const STAGE_MIN = 360;
+export function fitStage() {
+  const stages = $("stages"), list = [$("stage"), $("stage2")];
+  const on = innerWidth >= 900 && !$("v-explore").hidden;
+  document.body.classList.toggle("fit", on);
+  if (!on) { list.forEach((st) => { st.style.width = st.style.height = ""; }); return; }
+  const panel = stages.parentElement, ps = getComputedStyle(panel);
+  const colW = panel.clientWidth - parseFloat(ps.paddingLeft) - parseFloat(ps.paddingRight);
+  const two = stages.classList.contains("two"), maxW = two ? (colW - 10) / 2 : colW;
+  // everything under the pictures inside the panel, its bottom padding and the page gap under it
+  const below = panel.getBoundingClientRect().bottom - stages.getBoundingClientRect().bottom + 14;
+  const top = stages.getBoundingClientRect().top + scrollY;
+  const avail = innerHeight - top - below;
+  const size = Math.round(Math.max(STAGE_MIN, Math.min(avail, maxW, innerHeight * 0.7)));
+  list.forEach((st) => { st.style.width = st.style.height = size + "px"; });
+}
+
+// View settings fold away with a click on their title; remembered per browser
+function viewFold() {
+  const b = $("viewfold"), body = $("viewbody");
+  const set = (open) => {
+    b.setAttribute("aria-expanded", open); body.hidden = !open;
+    try { localStorage.setItem("view-open", open ? "1" : "0"); } catch (e) { /* storage off */ }
+  };
+  let open = true;
+  try { open = localStorage.getItem("view-open") !== "0"; } catch (e) { /* storage off */ }
+  set(open);
+  b.onclick = () => set(b.getAttribute("aria-expanded") !== "true");
 }
 
 // ---------- search box: target names with autocomplete (names.js), or coordinates ----------

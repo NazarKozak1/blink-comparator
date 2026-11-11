@@ -48,24 +48,29 @@ h2{font-size:15px;font-weight:600;margin:0 0 8px}
 .qlist li:hover,.qlist li[aria-selected=true]{background:rgba(98,208,255,.12);box-shadow:inset 2px 0 0 var(--a2)}
 .qmsg{margin:8px 4px 0;font-size:13px;color:var(--warm)}
 .grid{display:grid;gap:16px}
-@media(min-width:900px){.grid{grid-template-columns:minmax(0,1fr) 330px}}
+@media(min-width:900px){.grid{grid-template-columns:minmax(0,1fr) 330px;align-items:start}}
+.side{display:grid;gap:12px;align-content:start}
+@media(min-width:900px){.side{position:sticky;top:8px;align-self:stretch;contain:size;max-height:calc(100vh - 16px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;border-radius:16px}}
+.fold{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.fold::after{content:"";width:7px;height:7px;border-right:1.5px solid var(--mut);border-bottom:1.5px solid var(--mut);transform:rotate(45deg) translateY(-2px);transition:transform .15s}
+.fold[aria-expanded=false]::after{transform:rotate(-45deg)}
+#viewp:has(.fold[aria-expanded=false]) h2{margin:0}
+@media(min-width:900px){.fit .wrap{gap:10px;padding-bottom:12px}.fit #v-explore>.grid>.panel{padding:12px 14px}.fit .stage{max-height:none}}
 .stage{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:1;max-height:70vh;margin:0 auto}
 .stage canvas{width:100%;height:100%;display:block;cursor:crosshair}
 .ring,.ring2{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;pointer-events:none;display:none;border:2px solid var(--a2)}
 .ring2{border-color:var(--ok);width:36px;height:36px;margin:-18px 0 0 -18px}
 .state{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.8);color:var(--mut);text-align:center;padding:20px}
-.cap{margin:10px 0 0;font-size:14px;text-align:center}
-.legend{font-size:12px;color:var(--mut);text-align:center;min-height:18px}
-.ctrl{display:flex;align-items:center;gap:10px;margin-top:10px}
+.cap{margin:6px 0 0;font-size:14px;text-align:center}
+.legend{font-size:12px;color:var(--mut);text-align:center}
+.ctrl{display:flex;align-items:center;gap:10px;margin-top:6px}
+#cnt{flex:none;white-space:nowrap;min-width:9ch;text-align:right}
 .play{width:42px;height:42px;border-radius:50%;border:0;background:var(--a1);color:#10121F;font-size:15px;flex:none}
 input[type=range]{width:100%;accent-color:var(--a1)}
 .tl{position:relative;height:34px;background:rgba(255,255,255,.05);border-radius:8px;margin-top:12px;cursor:pointer}
 .tl i{position:absolute;top:0;bottom:0;background:rgba(91,227,161,.18);border:1px solid rgba(91,227,161,.5);border-radius:6px}
 .tl u{position:absolute;top:8px;bottom:8px;width:2px;background:var(--a2);text-decoration:none}
 .tl s{position:absolute;top:2px;bottom:2px;width:3px;background:var(--a1);border-radius:2px}
-.eps{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.eps button{background:none;border:1px solid rgba(91,227,161,.4);border-radius:8px;padding:6px 10px;font-size:13px}
-.eps button[aria-pressed=true]{background:rgba(91,227,161,.18)}
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .seg button{flex:1;background:none;border:0;padding:8px 2px;font-size:13px}
 .seg button[aria-pressed=true]{background:var(--a1);color:#10121F;font-weight:600}
@@ -205,11 +210,11 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
 .cb-sk{align-self:end;margin:0 1px;height:var(--h);border-radius:3px 3px 0 0;background:var(--line);animation:cb-pulse 1s ease-in-out infinite alternate}
 @keyframes cb-pulse{from{opacity:.35}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){.cb *,.cb *::after{transition:none!important;animation:none!important}}
-.tlhead{margin-top:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tlhead{margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .tlbtns{margin-left:auto;display:flex;gap:6px}
 .tlbtns button{padding:2px 12px;font-size:12px;min-width:34px}
 .tlwrap{position:relative}
-.tlwrap .tl{margin-top:6px;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
+.tlwrap .tl{margin-top:2px;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
 .tl i,.tl b,.tl u,.tl s{pointer-events:none}
 .tl i{min-width:10px}
 .tl i.dim{background:rgba(91,227,161,.07);border-color:rgba(91,227,161,.25)}
@@ -223,7 +228,11 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
 .tl u.faint{width:1px;opacity:.45;top:20px;bottom:4px}      /* photos of a stack: lower half, labels stay readable */
 .tl s{background:var(--tx);box-shadow:0 0 6px var(--a2)}
 .tltip{position:absolute;bottom:calc(100% + 6px);transform:translateX(-50%);display:none;background:#07102a;border:1px solid var(--line);border-radius:8px;padding:3px 9px;font-size:12px;white-space:nowrap;pointer-events:none;z-index:4}
-.tlaxis{position:relative;height:18px;margin-top:3px;font-size:11px;color:var(--mut)}
+.tlaxis{position:relative;height:18px;margin-top:2px;font-size:11px;color:var(--mut)}
+.tlep{position:relative;height:18px;margin-top:4px}
+.tlep button{position:absolute;top:0;transform:translateX(-50%);background:none;border:0;border-radius:6px;padding:1px 5px;font:500 11px "IBM Plex Mono",monospace;color:var(--ok);white-space:nowrap;cursor:zoom-in}
+.tlep button:hover,.tlep button:focus-visible{color:var(--a2);background:rgba(98,208,255,.1)}
+.tlep button[aria-pressed=true]{color:var(--tx);background:rgba(91,227,161,.18);cursor:default}
 .tlaxis span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap;padding-top:4px}
 .tlaxis span::before{content:"";position:absolute;left:50%;top:0;width:1px;height:3px;background:var(--line)}
 .badge.soon{background:rgba(140,156,200,.16);color:var(--mut);font-weight:500;margin-left:6px}
@@ -251,9 +260,13 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
 @media(pointer:coarse){.toolhint .th-m{display:none}.toolhint .th-t{display:inline}}
 @media(max-width:600px){.toolhint{white-space:normal;width:max-content;text-align:center;border-radius:14px}}
 .stage.tool-spec canvas{cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cpath d='M11 1v7M11 14v7M1 11h7M14 11h7' stroke='%23000' stroke-width='3.5'/%3E%3Cpath d='M11 1v7M11 14v7M1 11h7M14 11h7' stroke='%23fff' stroke-width='1.5'/%3E%3Crect x='17' y='18' width='14' height='13' rx='3' fill='%2302040C' stroke='%2362D0FF'/%3E%3Cpath d='M19 28l3-5 2 2 3-5 2 3' stroke='%2362D0FF' stroke-width='1.6'/%3E%3C/g%3E%3C/svg%3E") 11 11, crosshair}
-.objh{font-size:13px;font-weight:600;margin:14px 0 6px;display:flex;align-items:center}
+.objh{font-size:13px;font-weight:600;margin:14px 0 6px;display:flex;align-items:center;flex-wrap:wrap}.objh .note{margin-left:6px;font-weight:400}
 .objs{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.objs li{border-left:2px solid var(--a2);padding:2px 0 2px 10px;display:grid;gap:1px;font-size:13px}
+.objs li{display:block}
+.orow{display:grid;gap:1px;width:100%;text-align:left;background:none;border:0;border-left:2px solid var(--line);border-radius:0 8px 8px 0;padding:3px 6px 3px 10px;font-size:13px;color:var(--tx);cursor:pointer}
+.orow:hover,.orow:focus-visible{background:rgba(98,208,255,.08);border-left-color:var(--a2)}
+.orow[aria-pressed=true]{background:rgba(98,208,255,.14);border-left-color:var(--a2)}
+.odot{position:absolute;width:3px;height:3px;margin:-1.5px 0 0 -1.5px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px #000,0 0 0 2px var(--a2);pointer-events:none;display:none;z-index:2}
 .objs .ot{color:var(--tx);opacity:.85}.objs .op{color:var(--ok)}.objs .om{color:var(--mut);font-size:11px}
 .bars{display:grid;gap:7px;font-size:13px}
 .bars .tb{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 3.5em;gap:10px;align-items:center}
@@ -352,19 +365,18 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
     <div class="grid">
     <div class="panel">
       <div class="stages" id="stages">
-        <div class="stage" id="stage"><canvas id="cv" width="720" height="720" aria-label="Sky image"></canvas><div class="ring" id="ring"></div><div class="ring2" id="ring2"></div><div class="toolhint" id="toolhint" hidden><b>Spectrum tool</b> · <span class="th-m">click a star · drag for an area · Esc to exit</span><span class="th-t">tap a star · tap Spectrum again to exit</span></div><div class="state" id="state"></div></div>
+        <div class="stage" id="stage"><canvas id="cv" width="720" height="720" aria-label="Sky image"></canvas><div class="ring" id="ring"></div><div class="ring2" id="ring2"></div><div class="odot" id="odot" aria-hidden="true"></div><div class="toolhint" id="toolhint" hidden><b>Spectrum tool</b> · <span class="th-m">click a star · drag for an area · Esc to exit</span><span class="th-t">tap a star · tap Spectrum again to exit</span></div><div class="state" id="state"></div></div>
         <div class="stage" id="stage2" hidden><canvas id="cv2" width="720" height="720" aria-label="The same stack made with the second method"></canvas><div class="state" id="state2"></div></div>
       </div>
       <p class="cap"><span id="cap"></span><span class="tip" tabindex="0" role="note" data-t="Colours are illustrative: infrared light is invisible to the eye. Each camera gets its own tint.">i</span></p><div class="legend" id="lgd"></div>
       <div class="ctrl"><button class="play" id="play" aria-label="Play">▶</button><input id="sl" type="range" min="0" max="0" value="0" aria-label="Frame"><span class="mono note" id="cnt"></span></div>
-      <div class="note tlhead">Timeline<span class="tip" tabindex="0" role="note" data-t="Each tick is one photo at its real date. Green blocks are visits (epochs); in Stacks each block is one stack. Scroll the mouse wheel over the timeline to zoom (down to minutes), drag along it to scrub through the photos, double-click a visit to zoom into it. On a phone use + and −. All shows the whole time span.">i</span><span id="tlspan" class="mono"></span><span class="tlbtns"><button class="ghost" id="tlin" type="button" aria-label="Zoom in">+</button><button class="ghost" id="tlout" type="button" aria-label="Zoom out">−</button><button class="ghost" id="tlall" type="button" hidden>All</button></span></div>
-      <div class="tlwrap"><div class="tl" id="tl" aria-label="Timeline"></div><div class="tltip" id="tltip"></div></div>
+      <div class="note tlhead">Timeline<span class="tip" tabindex="0" role="note" data-t="Each tick is one photo at its real date. Green blocks are visits (epochs); in Stacks each block is one stack." data-list="Month labels :: click one to zoom into that visit, then pick a photo on the bar. ;; All epochs or Esc :: back to the whole time span. ;; Mouse wheel :: zoom around the cursor, down to minutes; on a phone use + and −. ;; Drag or double-click :: scrub through the photos; zoom into a visit. ;; Picture :: click to pin a point and see the known objects there. ;; Keys :: Space = play, ←/→ = step.">i</span><span id="tlspan" class="mono"></span><span class="tlbtns"><button class="ghost" id="tlin" type="button" aria-label="Zoom in">+</button><button class="ghost" id="tlout" type="button" aria-label="Zoom out">−</button><button class="ghost" id="tlall" type="button" hidden>All epochs</button></span></div>
+      <div class="tlwrap"><div class="tlep" id="tlep" role="group" aria-label="Visits"></div><div class="tl" id="tl" aria-label="Timeline"></div><div class="tltip" id="tltip"></div></div>
       <div class="tlaxis" id="tlaxis" aria-hidden="true"></div>
-      <div class="eps" id="eps"></div>
-      <p class="note">Click to pin a point and see the known objects there. Space = play, ←/→ = step.</p>
     </div>
-    <aside style="display:grid;gap:16px;align-content:start">
-      <div class="panel"><h2>View<span class="tip r" tabindex="0" role="note" data-t="Four ways to look at the same spot:" data-list="Frames :: single photos, one at a time. ;; Stacks :: photos from one visit added together; cleaner. ;; Blink :: flips between two visits, so anything that moved jumps. ;; Diff :: shows only what changed between two visits.">i</span></h2>
+    <aside class="side">
+      <div class="panel" id="viewp"><h2><button type="button" class="fold" id="viewfold" aria-expanded="true" aria-controls="viewbody">View</button><span class="tip r" tabindex="0" role="note" data-t="Four ways to look at the same spot:" data-list="Frames :: single photos, one at a time. ;; Stacks :: photos from one visit added together; cleaner. ;; Blink :: flips between two visits, so anything that moved jumps. ;; Diff :: shows only what changed between two visits.">i</span></h2>
+        <div id="viewbody">
         <div class="seg" id="mode"><button data-v="frames" aria-pressed="true">Frames</button><button data-v="stacks" aria-pressed="false">Stacks</button><button data-v="blink" aria-pressed="false">Blink</button><button data-v="diff" aria-pressed="false">Diff</button></div>
         <label class="f" for="det">Detector<span class="tip r" tabindex="0" role="note" data-t="One of six cameras on SPHEREx; each sees its own range of infrared colours. D6 is best for very cold objects.">i</span></label><select id="det"></select>
         <label class="f" for="fov">Field size: <span class="mono" id="fovv"></span><span class="tip r" tabindex="0" role="note" data-t="How big a square of sky to show. 1′ is tiny, 30′ is about one full Moon. Above 10′ the edges of the image are seen in neighbouring colour bands.">i</span></label><input id="fov" type="range" min="1" max="30" value="6">
@@ -385,7 +397,7 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
           <select id="method2" aria-label="Second method" disabled><option value="minmax">minmax: drop brightest and darkest</option><option value="sigma" selected>sigma: drop outliers</option><option value="mean">mean: plain average</option></select>
           <label class="f" for="win">Stack window<span class="tip r" tabindex="0" role="note" data-t="Which photos go into one stack: one visit (epoch), one day, or your own date range. Dates are in UTC.">i</span></label><select id="win"><option value="epoch">One visit (epoch)</option><option value="day">One day (UTC)</option><option value="custom">Custom dates (UTC)</option></select>
           <div class="daterow" id="custom" hidden><input type="datetime-local" id="c-start" aria-label="Start, UTC"><input type="datetime-local" id="c-end" aria-label="End, UTC"></div>
-        </details></div>
+        </details></div></div>
       <div class="panel" id="pin"><h2>Point details<span class="tip r" tabindex="0" role="note" data-t="Coordinates and colour of the point you click, and the known objects (SIMBAD, Gaia DR3) in that pixel. To measure its spectrum, switch on Tools → Spectrum.">i</span></h2><p class="note">Click any point in the image to see its coordinates and the known objects there.</p></div>
     </aside>
   </div>

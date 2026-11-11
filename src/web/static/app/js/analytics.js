@@ -44,7 +44,7 @@ export function render() {
 }
 
 // ---------- known objects of the field (catalog.js) ----------
-const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const TOP_TYPES = 10, PAGE = 200;
 let sort = { key: "type", dir: 1 }, showAll = false, lastKey = "";
 

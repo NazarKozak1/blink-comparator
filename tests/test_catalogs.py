@@ -95,3 +95,30 @@ def test_field_job_without_gaia(monkeypatch, tmp_path):
     assert [o["name"] for o in objs] == ["Barnard's star"] and objs[0]["planets"] == 1
     body = C.json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
     assert body["simbad"] and body["gaia"] is None
+
+
+def test_group_keeps_k_of_the_main_object():
+    rows = [rec("Barnard's star", "BY*", 9.511), rec("Barnard's Star b", "Pl")]
+    rows[0]["k"], rows[1]["k"] = 4.524, None
+    g = C.group_simbad(rows)
+    objs = C.merge(g, [], 2025.6)
+    assert objs[0]["k"] == 4.524 and objs[0]["planets"] == 1
+
+
+def test_gaia_busy_and_retry_once_a_minute(monkeypatch, tmp_path):
+    """HTTP 429 marks Gaia busy (no error for the page); a retry is allowed once per GAIA_RETRY_S."""
+    monkeypatch.setattr(C, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(C, "_fields", C.OrderedDict())
+    monkeypatch.setattr(C, "query_simbad", lambda ra, dec, r: [rec("Barnard's star", "BY*", 9.5)])
+    calls = []
+
+    def busy(ra, dec, r):
+        calls.append(1)
+        raise C.GaiaBusy("429")
+    monkeypatch.setattr(C, "query_gaia", busy)
+    f = C.get_field(269.44625, 4.7675, 0.03)
+    assert f.done.wait(5) and f.state["gaia"] == "busy" and f.status == "ready"
+    assert C.retry_gaia(f) is False                      # tried less than a minute ago
+    f.tried["gaia"] -= C.GAIA_RETRY_S + 1
+    assert C.retry_gaia(f) is True
+    assert f.done.wait(5) and len(calls) == 2 and f.state["gaia"] == "busy"

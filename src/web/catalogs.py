@@ -20,11 +20,17 @@ from datetime import datetime
 from pathlib import Path
 
 SIMBAD_TAP = "https://simbad.harvard.edu/simbad/sim-tap/sync"
-GAIA_TAP = "https://gea.esac.esa.int/tap-server/tap/async"    # sync answers 503 from the server
+GAIA_TAP = "https://gea.esac.esa.int/tap-server/tap/async"    # async jobs: the only way from the production server
+GAIA_SYNC = "https://gea.esac.esa.int/tap-server/tap/sync"     # answers in ~1 s elsewhere, 503 from the server
 CACHE_DIR = Path(__file__).resolve().parents[2] / "cache" / "catalog"
 UA = {"User-Agent": "spherex-viewer/1.0 (NASA Space Apps 2026)"}
 SIMBAD_EPOCH, GAIA_EPOCH = 2000.0, 2016.0
-SIMBAD_TIMEOUT, GAIA_TIMEOUT = 15.0, 25.0
+SIMBAD_TIMEOUT = 15.0
+GAIA_TIMEOUT = 120.0       # background job; the archive's async queue can hold a job for 40 s and more
+GAIA_SYNC_TIMEOUT = 8.0
+GAIA_RETRY_S = 60          # a failed Gaia query may be asked again (on request) after this long
+GAIA_BUSY_S = 120          # after HTTP 429 (too many requests) nobody asks the archive for this long
+CACHE_VERSION = 2          # 2: SIMBAD rows carry the K magnitude
 MAX_ROWS = 5000
 FAST_PM_MAS = 200          # stars faster than this are also looked for outside the field (they move into it)
 FAST_MARGIN_DEG = {"simbad": 5 / 60, "gaia": 2 / 60}   # Barnard's star: 10.4"/yr -> 4.5' since 2000, 1.7' since 2016
@@ -116,7 +122,7 @@ def _cone(ra, dec, r, fast_r, pm_cond) -> str:
 
 def query_simbad(ra: float, dec: float, r: float, timeout: float = SIMBAD_TIMEOUT) -> list[dict]:
     pm = f"pmra*pmra + pmdec*pmdec > {FAST_PM_MAS ** 2}"
-    q = (f"SELECT TOP {MAX_ROWS} main_id, ra, dec, otype, pmra, pmdec, V FROM basic "
+    q = (f"SELECT TOP {MAX_ROWS} main_id, ra, dec, otype, pmra, pmdec, V, K FROM basic "
          f"LEFT JOIN allfluxes ON oid = oidref WHERE ra IS NOT NULL AND "
          + _cone(ra, dec, r + EDGE_MARGIN_DEG, r + FAST_MARGIN_DEG["simbad"], pm))
     data = urllib.parse.urlencode({"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": q}).encode()
@@ -127,8 +133,25 @@ def query_simbad(ra: float, dec: float, r: float, timeout: float = SIMBAD_TIMEOU
         if r_ is None or d_ is None:
             continue
         out.append({"name": clean_name(row["main_id"]), "ra": r_, "dec": d_, "otype": (row.get("otype") or "").strip(),
-                    "pmra": _f(row.get("pmra")), "pmdec": _f(row.get("pmdec")), "v": _f(row.get("V"))})
+                    "pmra": _f(row.get("pmra")), "pmdec": _f(row.get("pmdec")), "v": _f(row.get("V")),
+                    "k": _f(row.get("K"))})
     return out
+
+
+class GaiaBusy(Exception):
+    """The ESA archive answered 429 (too many requests from this address)."""
+
+
+_gaia_slot = threading.Semaphore(1)       # one job at the archive at a time from this server
+_gaia_busy_until = 0.0
+
+
+def _abort(job: str):
+    try:
+        data = urllib.parse.urlencode({"PHASE": "ABORT"}).encode()
+        urllib.request.urlopen(urllib.request.Request(job + "/phase", data, UA), timeout=5).read()
+    except Exception:
+        pass                               # best effort: the archive drops old jobs itself
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -136,9 +159,42 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def gaia_query(query: str, timeout: float = GAIA_TIMEOUT) -> list[dict]:
+    """The sync endpoint first (fast where it works), then an async job for the rest of the time."""
+    t = time.time()
+    if time.time() >= _gaia_busy_until:
+        try:
+            data = urllib.parse.urlencode({"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "QUERY": query}).encode()
+            text = urllib.request.urlopen(urllib.request.Request(GAIA_SYNC, data, UA),
+                                          timeout=min(GAIA_SYNC_TIMEOUT, timeout)).read().decode("utf-8")
+            return _csv(text)
+        except Exception as e:
+            print(f"gaia sync failed ({e}), trying an async job")
+    return gaia_async(query, max(5.0, timeout - (time.time() - t)))
+
+
 def gaia_async(query: str, timeout: float = GAIA_TIMEOUT) -> list[dict]:
-    """Run an ADQL query on the ESA Gaia archive as an async job; TimeoutError if it is not done in time."""
+    """Run an ADQL query on the ESA Gaia archive as an async job, one at a time from this server; TimeoutError if it
+    is not done in time (the job is then aborted, so it does not hold the archive's quota), GaiaBusy after a 429."""
+    global _gaia_busy_until
     end = time.time() + timeout
+    if time.time() < _gaia_busy_until:
+        raise GaiaBusy("Gaia archive asked to wait")
+    if not _gaia_slot.acquire(timeout=timeout):
+        raise TimeoutError("another Gaia job is still running")
+    try:
+        return _gaia_job(query, end)
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            _gaia_busy_until = time.time() + GAIA_BUSY_S
+            raise GaiaBusy("HTTP 429 from the Gaia archive") from e
+        raise
+    finally:
+        _gaia_slot.release()
+
+
+def _gaia_job(query: str, end: float) -> list[dict]:
+    timeout = max(1.0, end - time.time())
     data = urllib.parse.urlencode({"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "csv", "PHASE": "RUN",
                                    "QUERY": query}).encode()
     opener = urllib.request.build_opener(_NoRedirect)
@@ -150,28 +206,34 @@ def gaia_async(query: str, timeout: float = GAIA_TIMEOUT) -> list[dict]:
             raise
         job = e.headers["Location"]
     delay = 0.3
-    while True:
-        left = end - time.time()
-        if left <= 0:
-            raise TimeoutError("Gaia job not finished in time")
-        phase = urllib.request.urlopen(urllib.request.Request(job + "/phase", headers=UA), timeout=min(10, left)).read().decode().strip()
-        if phase == "COMPLETED":
-            break
-        if phase in ("ERROR", "ABORTED"):
-            raise RuntimeError(f"Gaia job {phase}")
-        time.sleep(min(delay, max(0.05, end - time.time())))
-        delay = min(delay * 1.5, 2.0)
-    left = max(3.0, end - time.time())
-    text = urllib.request.urlopen(urllib.request.Request(job + "/results/result", headers=UA), timeout=left).read().decode("utf-8")
+    try:
+        while True:
+            left = end - time.time()
+            if left <= 0:
+                raise TimeoutError("Gaia job not finished in time")
+            phase = urllib.request.urlopen(urllib.request.Request(job + "/phase", headers=UA), timeout=min(10, left)).read().decode().strip()
+            if phase == "COMPLETED":
+                break
+            if phase in ("ERROR", "ABORTED"):
+                raise RuntimeError(f"Gaia job {phase}")
+            time.sleep(min(delay, max(0.05, end - time.time())))
+            delay = min(delay * 1.5, 2.0)
+        left = max(3.0, end - time.time())
+        text = urllib.request.urlopen(urllib.request.Request(job + "/results/result", headers=UA), timeout=left).read().decode("utf-8")
+    except BaseException:
+        _abort(job)
+        raise
     return _csv(text)
 
 
 def query_gaia(ra: float, dec: float, r: float, timeout: float = GAIA_TIMEOUT) -> list[dict]:
-    pm = f"pm > {FAST_PM_MAS}"
+    """One plain cone, wide enough for fast stars to move in since 2016 (an OR of two cones, as for SIMBAD, may not
+    use the archive's sky index); the field filter drops the rest."""
     q = (f"SELECT TOP {MAX_ROWS} source_id, ra, dec, pmra, pmdec, phot_g_mean_mag FROM gaiadr3.gaia_source WHERE "
-         + _cone(ra, dec, r + EDGE_MARGIN_DEG, r + FAST_MARGIN_DEG["gaia"], pm))
+         f"1=CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra}, {dec}, {r + FAST_MARGIN_DEG['gaia']})) "
+         "ORDER BY phot_g_mean_mag")              # a crowded wide field keeps its brightest MAX_ROWS
     out = []
-    for row in gaia_async(q, timeout):
+    for row in gaia_query(q, timeout):
         r_, d_ = _f(row["ra"]), _f(row["dec"])
         if r_ is None or d_ is None:
             continue
@@ -192,6 +254,8 @@ def group_simbad(rows: list[dict]) -> list[dict]:
     out = []
     for g in groups.values():
         g.sort(key=lambda r: (r["otype"] == "Pl", r["v"] is None, r["v"] or 0, r["name"]))
+        if main_k := next((r.get("k") for r in g if r.get("k") is not None and r["otype"] != "Pl"), None):
+            g[0] = {**g[0], "k": g[0].get("k") if g[0].get("k") is not None else main_k}
         main, rest = g[0], g[1:]
         planets = sum(1 for r in rest if r["otype"] == "Pl")
         out.append({**main, "planets": planets, "also": [r["name"] for r in rest if r["otype"] != "Pl"]})
@@ -205,7 +269,7 @@ def merge(simbad: list[dict], gaia: list[dict], year: float) -> list[dict]:
     for s in simbad:
         ra, dec = move(s["ra"], s["dec"], s["pmra"], s["pmdec"], SIMBAD_EPOCH, year)
         o = {"name": s["name"], "otype": s["otype"], "type": otype_name(s["otype"]), "ra": ra, "dec": dec,
-             "pmra": s["pmra"], "pmdec": s["pmdec"], "v": s["v"], "g": None, "planets": s["planets"],
+             "pmra": s["pmra"], "pmdec": s["pmdec"], "v": s["v"], "k": s.get("k"), "g": None, "planets": s["planets"],
              "also": s["also"], "source": "SIMBAD"}
         cell.setdefault((int(ra * 3600 // 2), int(dec * 3600 // 2)), []).append(len(objs))
         objs.append(o)
@@ -228,7 +292,7 @@ def merge(simbad: list[dict], gaia: list[dict], year: float) -> list[dict]:
                 best["pmra"], best["pmdec"] = gs["pmra"], gs["pmdec"]
         else:
             objs.append({"name": gs["name"], "otype": "", "type": GAIA_TYPE, "ra": ra, "dec": dec, "pmra": gs["pmra"],
-                         "pmdec": gs["pmdec"], "v": None, "g": gs["g"], "planets": 0, "also": [], "source": "Gaia"})
+                         "pmdec": gs["pmdec"], "v": None, "k": None, "g": gs["g"], "planets": 0, "also": [], "source": "Gaia"})
     return objs
 
 
@@ -240,6 +304,8 @@ class Field:
         self.simbad = self.gaia = None             # lists once loaded
         self.state = {"simbad": "loading", "gaia": "loading"}
         self.seconds = {}
+        self.tried = {}                            # catalog -> time of the last attempt
+        self.limited = {}                          # catalog -> True if it hit MAX_ROWS
         self.done = threading.Event()
         self.lock = threading.Lock()
 
@@ -267,7 +333,7 @@ def _disk(key: str) -> Path:
 def _save(f: Field):
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        body = {"key": f.key, "simbad": f.simbad if f.state["simbad"] == "ok" else None,
+        body = {"key": f.key, "v": CACHE_VERSION, "simbad": f.simbad if f.state["simbad"] == "ok" else None,
                 "gaia": f.gaia if f.state["gaia"] == "ok" else None, "saved": time.time()}
         _disk(f.key).write_text(json.dumps(body), encoding="utf-8")
     except Exception as e:
@@ -276,13 +342,17 @@ def _save(f: Field):
 
 def _run(f: Field, name: str, fn):
     t = time.time()
+    f.tried[name] = t
     try:
         rows = fn(f.ra, f.dec, f.r)
+        f.limited[name] = len(rows) >= MAX_ROWS
         with f.lock:
             setattr(f, name, group_simbad(rows) if name == "simbad" else rows)
             f.state[name] = "ok"
     except TimeoutError:
         f.state[name] = "timeout"
+    except GaiaBusy:
+        f.state[name] = "busy"
     except Exception as e:
         print(f"catalog {name} failed for {f.key}: {e}")
         f.state[name] = "error"
@@ -308,6 +378,8 @@ def get_field(ra: float, dec: float, r: float) -> Field:
     try:
         body = json.loads(_disk(key).read_text(encoding="utf-8"))
         for name in ("simbad", "gaia"):
+            if name == "simbad" and body.get("v", 1) < CACHE_VERSION:
+                continue                           # older SIMBAD rows have no K: asked again
             if body.get(name) is not None:
                 setattr(f, name, body[name]); f.state[name] = "ok"; f.seconds[name] = 0.0
                 todo.pop(name)
@@ -320,6 +392,17 @@ def get_field(ra: float, dec: float, r: float) -> Field:
     for name, fn in todo.items():
         threading.Thread(target=_run, args=(f, name, fn), daemon=True, name=f"catalog-{name}").start()
     return f
+
+
+def retry_gaia(f: Field) -> bool:
+    """Ask Gaia again for a field where it failed (timeout, error, busy), at most once per GAIA_RETRY_S."""
+    with f.lock:
+        if f.state["gaia"] in ("ok", "loading") or time.time() - f.tried.get("gaia", 0) < GAIA_RETRY_S:
+            return False
+        f.state["gaia"] = "loading"
+        f.done.clear()
+    threading.Thread(target=_run, args=(f, "gaia", query_gaia), daemon=True, name="catalog-gaia-retry").start()
+    return True
 
 
 def field_objects(f: Field, when: datetime, half_deg: float | None = None) -> list[dict]:
@@ -342,7 +425,7 @@ def gaia_motion(ra: float, dec: float, when: datetime, radius_arcsec: float = 15
     q = ("SELECT source_id, ra, dec, pmra, pmdec, phot_g_mean_mag FROM gaiadr3.gaia_source "
          f"WHERE 1=CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra}, {dec}, {radius_arcsec / 3600})) AND pm > {fast_mas}")
     best = None
-    for row in gaia_async(q, timeout):
+    for row in gaia_query(q, timeout):
         gra, gdec, pmra, pmdec = (_f(row[k]) for k in ("ra", "dec", "pmra", "pmdec"))
         if None in (gra, gdec, pmra, pmdec):
             continue

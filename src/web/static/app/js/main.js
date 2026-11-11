@@ -18,6 +18,8 @@ function route() {
   [].forEach.call(document.querySelectorAll("nav button"), (b) => b.setAttribute("aria-current", b.dataset.v === h));
   $("back").hidden = h === "home";
   if (h === "sphere") sphere.resize();
+  if (h === "explore") explore.fitStage();
+  else document.body.classList.remove("fit");
   if (h === "analytics") analytics.render();
   if (h !== "explore" && $("play").textContent !== "▶") explore.toggle();
   writeUrl();

@@ -1,9 +1,11 @@
 // Timeline under the picture (behaviour of the legacy page, look of the prototype):
 // ticks at the real date of every photo, visits as green blocks, stack windows as labelled blocks,
 // date axis that adapts from months to minutes, wheel zoom, drag to scrub, double click to zoom into a visit,
-// + / - / All buttons and visit chips.
+// + / - / All epochs buttons, and a label row above the bar: month and year of every visit, a click zooms into it.
 import { S } from "./state.js";
 import { $, MO, day, month, stamp } from "./util.js";
+
+export const epochTitle = (e, k) => "Epoch " + (k + 1) + " · " + month(e.start) + " · " + e.n + " photo" + (e.n === 1 ? "" : "s");
 
 const MIN_SPAN = 6 * 6e4;          // 6 minutes across at most zoom
 const DOUBLE_MS = 350;
@@ -49,6 +51,8 @@ export function zoomToEpoch(k, selectFirst = false) {
 }
 
 // Items (frames or stacks) whose time is inside the visible window: playback walks through these.
+export function showAll() { C.D.view = null; draw(); }
+
 export function visibleItems() {
   const [lo, hi] = span();
   return C.items().map((it, k) => [itemTime(it), k]).filter(([t]) => t >= lo && t <= hi).map(([, k]) => k);
@@ -68,7 +72,7 @@ function axisTicks(lo, hi, maxLabels) {
     for (;;) {
       const t = Date.UTC(y, m, 1);
       if (t > hi) break;
-      if (t >= lo) out.push([t, MO[((m % 12) + 12) % 12] + (m % 12 === 0 || out.length === 0 ? " " + new Date(t).getUTCFullYear() : "")]);
+      if (t >= lo) out.push([t, MO[((m % 12) + 12) % 12] + " " + new Date(t).getUTCFullYear()]);
       m += n;
     }
     return out;
@@ -88,7 +92,7 @@ function spanText(ms) {
 
 export function draw() {
   const D = C.D, tl = $("tl");
-  if (!D.frames.length) { tl.innerHTML = ""; $("tlaxis").innerHTML = ""; $("eps").innerHTML = ""; $("tlspan").textContent = ""; $("tlall").hidden = true; return; }
+  if (!D.frames.length) { tl.innerHTML = ""; $("tlaxis").innerHTML = ""; $("tlep").innerHTML = ""; $("tlspan").textContent = ""; $("tlall").hidden = true; return; }
   const t = C.curTime();
   if (t != null && D.view && (t < D.view[0] || t > D.view[1])) {      // keep the current item in view
     const w = D.view[1] - D.view[0];
@@ -135,20 +139,44 @@ export function draw() {
   if (m === "frames" && t != null && inside(t)) h += `<s style="left:${X(t)}%"></s>`;
   tl.innerHTML = h;
   // date axis
-  $("tlaxis").innerHTML = axisTicks(lo, hi, Math.max(2, Math.floor(W / 95)))
+  $("tlaxis").innerHTML = axisTicks(lo, hi, Math.max(2, Math.floor(W / 110)))
     .map(([v, s]) => `<span style="left:${X(v)}%">${s}</span>`).join("");
   // header and chips
   const visible = visibleItems().length;
   const noun = (m === "stacks" ? "stack" : "photo") + (visible === 1 ? "" : "s");
   $("tlspan").textContent = "· " + spanText(hi - lo) + " shown · " + visible + " " + noun + " in view";
   $("tlall").hidden = !D.view;
-  const curEp = t == null ? -1 : D.epochs.findIndex((e) => t >= e.t0 - 864e5 && t <= e.t1 + 864e5);
-  const chips = D.epochs.map((e, k) => {
-    const on = m === "blink" || m === "diff" ? k === A || k === B : k === curEp;
-    const tag = m === "blink" || m === "diff" ? (k === A ? "A · " : k === B ? "B · " : "") : "";
-    return `<button type="button" data-k="${k}" aria-pressed="${on}" title="${e.label}">${tag}Epoch ${k + 1} · ${month(e.start)} · ${e.n} fr.</button>`;
-  }).join("");
-  if ($("eps").innerHTML !== chips) $("eps").innerHTML = chips;
+  // visit labels above the bar: centred on the visit and kept inside the bar; close visits push their labels
+  // apart (a few relaxation passes), a label that still overlaps is left out (the visit stays in the tooltip)
+  const zoomedTo = D.view ? D.epochs.findIndex((e) => e.t0 >= D.view[0] - 864e5 && e.t1 <= D.view[1] + 864e5
+    && (D.view[1] - D.view[0]) < (e.t1 - e.t0) * 3 + 6 * 864e5) : -1;
+  const GAP = 6;
+  const lab = [];
+  D.epochs.forEach((e, k) => {
+    const a = Math.max(e.t0, lo), b = Math.min(e.t1, hi);
+    if (b < lo || a > hi) return;
+    const ab = m === "blink" || m === "diff" ? (k === A ? "A · " : k === B ? "B · " : "") : "";
+    const text = ab + month(e.start), w = text.length * 7 + 10;
+    lab.push({ k, e, text, w, x: px(X((a + b) / 2)) });
+  });
+  const clampX = (l) => { l.x = Math.min(W - l.w / 2, Math.max(l.w / 2, l.x)); };
+  lab.forEach(clampX);
+  for (let pass = 0; pass < 12; pass++) {
+    let moved = false;
+    for (let j = 1; j < lab.length; j++) {
+      const p = lab[j - 1], q = lab[j], over = p.x + p.w / 2 + GAP - (q.x - q.w / 2);
+      if (over > 0) { p.x -= over / 2; q.x += over / 2; clampX(p); clampX(q); moved = true; }
+    }
+    if (!moved) break;
+  }
+  let lastRight = -Infinity, labels = "";
+  lab.forEach(({ k, e, text, w, x }) => {
+    if (x - w / 2 < lastRight + GAP - 0.5) return;
+    lastRight = x + w / 2;
+    labels += `<button type="button" data-k="${k}" style="left:${x.toFixed(1)}px" aria-pressed="${k === zoomedTo}" `
+      + `aria-label="${epochTitle(e, k)}: show this visit on the timeline">${text}</button>`;
+  });
+  if ($("tlep").innerHTML !== labels) $("tlep").innerHTML = labels;
 }
 
 // ---------- pointer ----------
@@ -222,13 +250,23 @@ export function init(ctx) {
   tl.addEventListener("pointerleave", () => { if (!dragging) hideTip(); });
   $("tlin").onclick = () => { const t = C.curTime(); const [lo, hi] = span(); zoom(0.5, t ?? (lo + hi) / 2); };
   $("tlout").onclick = () => { const t = C.curTime(); const [lo, hi] = span(); zoom(2, t ?? (lo + hi) / 2); };
-  $("tlall").onclick = () => { C.D.view = null; draw(); };
-  $("eps").onclick = (e) => {
+  $("tlall").onclick = showAll;
+  // a visit label zooms the timeline into that visit; the photo is then picked on the zoomed bar
+  const ep = $("tlep");
+  ep.onclick = (e) => {
     const b = e.target.closest("button[data-k]");
     if (!b) return;
     C.stop();
-    if (S.mode === "blink" || S.mode === "diff") { C.selectB(+b.dataset.k); zoomToEpoch(+b.dataset.k); }
-    else zoomToEpoch(+b.dataset.k, true);
+    zoomToEpoch(+b.dataset.k);
   };
+  ep.addEventListener("pointerover", (e) => {
+    const b = e.target.closest("button[data-k]");
+    if (!b) return;
+    const k = +b.dataset.k, el = $("tltip"), r = $("tl").getBoundingClientRect(), br = b.getBoundingClientRect();
+    el.textContent = epochTitle(C.D.epochs[k], k);
+    el.style.display = "block";
+    el.style.left = Math.max(80, Math.min(r.width - 80, br.left + br.width / 2 - r.left)) + "px";
+  });
+  ep.addEventListener("pointerout", hideTip);
   addEventListener("resize", () => draw());
 }

@@ -64,8 +64,10 @@ def frame_info(path: str, coord, detector: int, half: int) -> dict | None:
     x, y = (float(v) for v in wcs.world_to_pixel(coord))
     if not (0 <= x < shape[1] and 0 <= y < shape[0]):
         return None
+    fwhm = header.get("PSF_FWHM")
     info = {"x": round(x, 2), "y": round(y, 2), "full": cutout_fits(wcs, shape, coord, half),
-            "lambda_um": None, "bandwidth_um": None, "band": None, "global_band": None}
+            "lambda_um": None, "bandwidth_um": None, "band": None, "global_band": None,
+            "psf_fwhm": round(float(fwhm), 2) if fwhm else None}
     try:
         lam, bw = wavelength(path, x, y)
     except Exception as e:   # frame stays usable without a band
@@ -146,19 +148,23 @@ def random_point(detector: int = Query(6, ge=1, le=6)):
 
 @app.get("/api/catalog")
 def catalog(coords: str, size: float = Query(6.0, gt=0.5, le=60), date: datetime | None = None,
-            wait: float = Query(0.0, ge=0, le=30)):
+            wait: float = Query(0.0, ge=0, le=30), retry: bool = False):
     """Known objects of the whole cutout: SIMBAD and Gaia DR3, asked once per field in the background and cached.
     Positions are moved to `date` (default now) by the proper motion. wait > 0 holds the answer until both catalogs
-    are done or the time is up. status: loading (nothing yet) | partial (one catalog) | ready (both done or failed)."""
+    are done or the time is up. status: loading (nothing yet) | partial (one catalog) | ready (both done or failed).
+    retry=1 asks Gaia again if it failed (timeout / error / busy), at most once a minute per field."""
     coord = _coord(coords)
     half_deg = (half_size_px(size) + 0.5) * PIXEL_ARCSEC / 3600
     f = catalogs.get_field(coord.ra.deg, coord.dec.deg, half_deg * math.sqrt(2))
+    if retry:
+        catalogs.retry_gaia(f)
     if wait:
         f.done.wait(wait)
     when = as_utc(date) if date else datetime.now(timezone.utc)
     t = time.time()
     objs = catalogs.field_objects(f, when, half_deg)
-    return {"status": f.status, "catalogs": dict(f.state), "seconds": dict(f.seconds), "ra": f.ra, "dec": f.dec,
+    return {"status": f.status, "catalogs": dict(f.state), "seconds": dict(f.seconds), "limited": dict(f.limited),
+            "ra": f.ra, "dec": f.dec,
             "radius_deg": round(f.r, 6), "date": when.isoformat(), "epoch_year": round(catalogs.year_of(when), 4),
             "n": len(objs), "merge_seconds": round(time.time() - t, 3), "objects": objs}
 
