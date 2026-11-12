@@ -112,6 +112,9 @@ def _f(v: str):
 
 
 def _csv(text: str) -> list[dict]:
+    # an archive in maintenance answers 200 with an HTML page: an error, not rows
+    if text.lstrip()[:1] == "<":
+        raise ValueError("HTML page instead of CSV (archive down?)")
     return list(csv.DictReader(io.StringIO(text)))
 
 

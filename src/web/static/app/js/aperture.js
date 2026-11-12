@@ -1,9 +1,10 @@
-// Aperture on the picture, only while the spectrum tool is on (otherwise a click just pins a point): click = snap to a source, Alt+click = exactly here, drag = free circle (extended area),
-// wheel over the circle = radius. Drawn as an SVG over the canvas in grid pixels (1 grid pixel = 1 SPHEREx pixel).
+// Aperture on the picture, only while the spectrum tool is on (otherwise a click just pins a point): click = a star
+// near the click, or the area if there is none (spectrum.js decides), Alt+click = a star exactly here, drag = a circle
+// of any size (an area). Drawn as an SVG over the canvas in grid pixels (1 grid pixel = 1 SPHEREx pixel).
 import { $, fracAt, gridSize, PIXEL_ARCSEC, skyAt } from "./util.js";
 
 const NS = "http://www.w3.org/2000/svg";
-export const R_MIN = 4, R_MAX = 120;            // arcsec
+export const R_MIN = 4, R_MAX = 120;            // arcsec, a dragged circle
 export const ap = { on: false, ra: 0, dec: 0, r: 10, blend: false, mode: "point" };
 let ctx = null, svg = null, down = null;
 
@@ -37,7 +38,7 @@ function sky(e) {
   return { fx, fy, ra, dec };
 }
 
-// c: {info(), fov(), ready(), active(), onPick({ra, dec, fx, fy, mode, snap, r}), onPoint({ra, dec, fx, fy}), onRadius(r)}
+// c: {info(), fov(), ready(), active(), onPick({ra, dec, fx, fy, mode, snap, r}), onPoint({ra, dec, fx, fy})}
 export function init(c) {
   ctx = c;
   svg = document.createElementNS(NS, "svg");
@@ -62,14 +63,5 @@ export function init(c) {
     else ctx.onPick({ ...d.p, mode: "point", snap: !e.altKey });
   });
   cv.addEventListener("pointercancel", () => { down = null; });
-  cv.addEventListener("wheel", (e) => {
-    if (!ap.on || !ctx.ready() || !ctx.active()) return;
-    const p = sky(e), k = Math.PI / 180;
-    const dist = Math.hypot((p.ra - ap.ra) * Math.cos(ap.dec * k), p.dec - ap.dec) * 3600;
-    if (dist > annulus(ap.r)[1] * PIXEL_ARCSEC + 6) return;          // only over the circle; elsewhere the page scrolls
-    e.preventDefault();
-    ap.r = clampR(ap.r * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
-    draw(); ctx.onRadius(ap.r);
-  }, { passive: false });
 }
 export const clampR = (r) => Math.round(Math.min(R_MAX, Math.max(R_MIN, r)) * 2) / 2;

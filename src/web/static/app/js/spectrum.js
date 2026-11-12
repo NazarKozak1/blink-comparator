@@ -1,64 +1,78 @@
-// Floating spectrum window for the point or area picked on the picture: aperture photometry of every frame of
-// all six detectors in the chosen visit +-10 days (/api/spectrum, detector by detector, 3 at a time), the plot,
-// features found (/api/features) and a second visit to compare with (moved by the Gaia proper motion, or re-snapped).
+// Floating spectrum window for the place picked on the picture: a click of the Spectrum tool or "Measure spectrum
+// here" (a 10" circle) or a dragged circle (its own size). Two ways to process it, switched in the window:
+// Ring background (mode "point": snap to the brightest pixel, sky from a ring, aperture correction, proper motion
+// when comparing visits) and Sky-model background (mode "extended": the circle as drawn, IMAGE - ZODI, no correction).
+// Aperture photometry of every frame of the six detectors in the chosen visit +-10 days (/api/spectrum, 3 at a
+// time), features (/api/features) and a second visit to compare with.
 import * as api from "./api.js";
 import * as AP from "./aperture.js";
 import { $, DET, day, dms, hms, month } from "./util.js";
 import { createWindow } from "./windows.js";
 
 const PAD_DAYS = 10, PARALLEL = 3, LAM = [0.75, 5.0];
+const CLICK_R = 10;      // arcsec, the circle of a click
 const HALF = { "Paα hydrogen": 0.02, "Brγ hydrogen": 0.02, "H₂O ice": 0.15, "PAH": 0.05, "CH₄": 0.06, "Brα hydrogen": 0.02, "CO₂ ice": 0.03, "CO ice": 0.03 };
 const W = 560, H = 300, M = { l: 58, r: 12, t: 22, b: 38 };   // plot box
+const METHODS = [["point", "Ring background"], ["extended", "Sky-model background"]];   // mode as /api/spectrum takes it
 
-let ctx = null;          // {epochs(), epochIndex(), shown(), detector(), onClose()}
-const P = { seq: 0, ra: 0, dec: 0, r: 10, mode: "point", snapped: false, snr: null, blend: false, nSrc: 1, note: "",
-  ea: -1, eb: -1, A: null, B: null, features: [], warnings: [], cmpNote: "", ratio: null, conf: {}, ctrl: null, timer: null };
+// cra / cdec: the place picked (a visit change snaps again from it); ra / dec: the circle on screen (snapped for Ring)
+let ctx = null;          // {epochs(), epochIndex(), shown(), onClose()}
+const P = { seq: 0, cra: 0, cdec: 0, ra: 0, dec: 0, r: CLICK_R, mode: "point", exact: false, looking: false, snapped: false,
+  snr: null, blend: false, nSrc: 1, note: "", motion: null, ea: -1, eb: -1, A: null, B: null, features: [], warnings: [],
+  cmpNote: "", ratio: null, conf: {}, ctrl: null, busy: false };
 let el = null, win = null;
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const isOpen = () => win && win.state !== "closed";      // open or minimised
 
+const INFO_T = "Each dot is one SPHEREx photo of this place. The six detectors see different colours, so together they make a spectrum.\n"
+  + "Click (a 10″ circle) or drag a circle of any size, then pick how the sky behind it is removed.";
+const INFO_LIST = "Ring background :: for stars and other point-like sources. The circle moves to the brightest pixel near the click, the sky is measured in the dashed ring around it, and the flux is corrected for the starlight that falls outside the circle. When two visits are compared, a fast star (Gaia DR3 or SIMBAD) is followed along its motion. ;; "
+  + "Sky-model background :: for nebulae, galaxies and other extended areas. The circle stays where it is, the sky is NASA’s model of the zodiacal glow, there is no correction and no motion: a ring would remove the nebula itself. ;; "
+  + "Default :: a click uses Ring, a dragged circle uses Sky-model. Alt+click: Ring exactly where you click. ;; "
+  + "Features :: a line or band is shown when it stands out by ≥3σ in 3 neighbouring colours, or by ≥5σ where the visit has only one or two colours on it. One seen in a single measurement is looked for in other visits. ;; "
+  + "Compare with :: the flux ratio of two visits, detector by detector, from the detectors that are not saturated.";
+
 // ---------- window (windows.js: drag, minimise to a tab, Esc, place) ----------
 function build() {
   win = createWindow("spectrum", {
-    title: "Spectrum", label: "Spectrum of the picked point", className: "spw",
-    header: `<div class="spw-tabs" role="tablist"><button role="tab" aria-selected="true">Spectrum</button>
-      <button role="tab" aria-selected="false" disabled title="Coming soon">Colours</button>
-      <button role="tab" aria-selected="false" disabled title="Coming soon">Star</button></div>`,
+    title: "Spectrum", label: "Spectrum of the picked place", className: "spw",
+    header: `<span class="tip" tabindex="0" role="note" data-t="${esc(INFO_T)}" data-list="${esc(INFO_LIST)}">i</span>`,
     onClose: cleanup,
   });
-  el = win.el; el.id = "spw";
+  el = win.el; el.id = "spw"; el.dataset.busy = "0";
   win.body.innerHTML = `
-    <div class="spw-pos" id="spw-pos"></div>
-    <div class="spw-row">
-      <div class="seg" id="spw-mode" role="group" aria-label="What to measure">
-        <button data-v="point" aria-pressed="true" title="One star or galaxy: total flux, aperture-corrected">Point source</button>
-        <button data-v="extended" aria-pressed="false" title="A patch of nebula: flux inside the circle, no correction">Extended area</button></div>
-      <label class="spw-rad">Radius <input type="range" id="spw-r" min="${AP.R_MIN}" max="${AP.R_MAX}" step="0.5"><span id="spw-rv"></span></label>
-    </div>
+    <div class="seg sm spw-meth" id="spw-meth" role="group" aria-label="How the sky background is removed">`
+    + METHODS.map(([v, t]) => `<button type="button" data-v="${v}" aria-pressed="false">${t}</button>`).join("") + `</div>
+    <div class="spw-pos mono" id="spw-pos"></div>
     <div class="spw-row">
       <label>Visit <select id="spw-ea"></select></label>
       <label>Compare with <select id="spw-eb"></select></label>
     </div>
     <div class="spw-prog" id="spw-prog" aria-live="polite"></div>
     <div id="spw-warn"></div>
+    <div id="spw-cmp"></div>
     <div class="spw-plot"><svg id="spw-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Spectrum: flux against wavelength"></svg>
       <div class="spw-tip" id="spw-tip"></div></div>
     <div class="spw-leg" id="spw-leg"></div>
-    <div id="spw-feat"></div>
-    <p class="note spw-foot" id="spw-foot"></p>`;
-  [].forEach.call($("spw-mode").children, (b) => { b.onclick = () => { if (P.mode !== b.dataset.v) { P.mode = b.dataset.v; P.snapped = false; P.blend = false; rerun(); } }; });
-  $("spw-r").oninput = () => { P.r = +$("spw-r").value; $("spw-rv").textContent = P.r + "″"; AP.show(P.ra, P.dec, P.r, P.blend, P.mode); later(); };
-  $("spw-ea").onchange = () => { P.ea = +$("spw-ea").value; if (P.eb === P.ea) P.eb = -1; rerun(); };
-  $("spw-eb").onchange = () => { P.eb = +$("spw-eb").value; compare(); };
+    <div id="spw-feat"></div>`;
+  $("spw-ea").onchange = () => { P.ea = +$("spw-ea").value; if (P.eb === P.ea) P.eb = -1; rerun({}); };
+  $("spw-eb").onchange = () => { P.eb = +$("spw-eb").value; setBusy(true); compare(); };
+  // another method: the circle stays where it is on screen (keep), only the processing changes
+  [].forEach.call($("spw-meth").children, (b) => {
+    b.onclick = () => { if (b.dataset.v !== P.mode) rerun({ ra: P.ra, dec: P.dec, mode: b.dataset.v, keep: true }); };
+  });
   const svg = $("spw-svg");
   svg.addEventListener("pointermove", hover);
   svg.addEventListener("pointerleave", () => { $("spw-tip").style.display = "none"; });
 }
 
+// data-busy on the window: "1" while measuring the visit(s) (screenshot scripts wait for "0")
+function setBusy(b) { P.busy = b; if (el) el.dataset.busy = b ? "1" : "0"; }
+
 // Closing (from the window or its tab) drops the circle; minimising keeps it.
 function cleanup() {
-  P.seq++; P.ctrl?.abort(); clearTimeout(P.timer);
+  P.seq++; P.ctrl?.abort(); setBusy(false);
   AP.hide(); ctx.onClose();
 }
 export function close() { win?.close(); }
@@ -76,41 +90,45 @@ function tabStatus() {
 // ---------- picking ----------
 export function init(c) { ctx = c; build(); }
 
-// pick: {ra, dec, mode, snap, r?} from aperture.js
+// pick: {ra, dec, mode, snap, r?} from aperture.js / explore.js: a click = "point" (Ring; snap false = Alt+click),
+// a dragged circle = "extended" (Sky-model) with its r; also {ea, eb} on a rerun, keep = do not move the circle
+// (a method switch: Ring still asks for a source there, for S/N, blends and "No point source found here")
 export async function open(pick) {
   const seq = ++P.seq;
   P.ctrl?.abort();
   win.open();             // a minimised window stays a tab, marked "updated"
-  Object.assign(P, { ra: pick.ra, dec: pick.dec, mode: pick.mode, snapped: false, snr: null, blend: false, nSrc: 1, note: "",
-    A: null, B: null, features: [], warnings: [], cmpNote: "", ratio: null, eb: -1 });
-  if (pick.r) P.r = pick.r;
+  const mode = pick.mode === "extended" ? "extended" : "point";
+  Object.assign(P, { cra: pick.ra, cdec: pick.dec, ra: pick.ra, dec: pick.dec, mode, r: pick.r || CLICK_R,
+    exact: pick.snap === false && mode === "point", looking: mode === "point", snapped: false, snr: null, blend: false,
+    nSrc: 1, note: "", motion: null, A: null, B: null, features: [], warnings: [], cmpNote: "", ratio: null, eb: pick.eb ?? -1 });
   P.ea = pick.ea ?? ctx.epochIndex();          // a visit picked in the window survives a rerun
+  setBusy(true);
   epochSelects();
   AP.show(P.ra, P.dec, P.r, false, P.mode);
   render();
-  if (P.mode === "point") {
+  if (mode === "point") {
+    // Ring: snap to the brightest pixel near the place (Alt+click: exactly there, only the blend check)
+    progress("Looking for a point source…");
     const sh = ctx.shown();
+    let q = null;
     if (sh) {
-      progress("Looking for a source here…");
-      try {
-        const q = await api.point({ ...sh, ra: P.ra, dec: P.dec, radius: P.r, snap: pick.snap ? 1 : 0 });
-        if (seq !== P.seq) return;
-        Object.assign(P, { ra: q.ra, dec: q.dec, snapped: q.snapped, snr: q.snr, blend: q.blend, nSrc: q.n_sources });
-        if (pick.snap && !q.snapped) P.note = "No source here — measuring at the clicked point";
-      } catch (e) { if (seq !== P.seq) return; P.note = "Could not look for a source: " + e.message; }
-      AP.show(P.ra, P.dec, P.r, P.blend, P.mode);
+      try { q = await api.point({ ...sh, ra: P.ra, dec: P.dec, radius: P.r, snap: P.exact ? 0 : 1 }); }
+      catch (e) { if (seq !== P.seq) return; P.note = "Could not look for a point source: " + e.message; }
     }
+    if (seq !== P.seq) return;
+    P.looking = false;
+    if (q) Object.assign(P, pick.keep ? {} : { ra: q.ra, dec: q.dec }, { snapped: q.snapped, snr: q.snr, blend: q.blend, nSrc: q.n_sources });
+    if (q && !q.snapped && !P.exact) P.note = "No point source found here";
+    AP.show(P.ra, P.dec, P.r, P.blend, P.mode);
   }
   run(seq);
 }
 
-function rerun() {
-  clearTimeout(P.timer);
+// The same circle again (another method or visit), from the place picked unless o says where; the compared visit is kept.
+function rerun(o) {
   if (!isOpen()) return;
-  open({ ra: P.ra, dec: P.dec, mode: P.mode, snap: P.mode === "point", r: P.r, ea: P.ea });
+  open({ ra: P.cra, dec: P.cdec, mode: P.mode, snap: !P.exact, r: P.r, ea: P.ea, eb: P.eb, ...o });
 }
-function later() { clearTimeout(P.timer); P.timer = setTimeout(() => { P.ctrl?.abort(); run(++P.seq); }, 450); }
-export function radius(r) { if (!isOpen()) return; P.r = r; $("spw-r").value = r; $("spw-rv").textContent = r + "″"; later(); }
 
 // ---------- measuring ----------
 function windowOf(k) {
@@ -156,9 +174,11 @@ const detList = (ds) => {           // [1,2,3,4] -> "D1–D4", [1,3] -> "D1, D3"
   return out.join(", ");
 };
 const pointsOf = (res) => (res ? Object.values(res.dets).flat() : []);
+const allDone = (res) => !!res && Object.values(res.status).every((x) => x === "ok" || x === "err");
+const satDets = () => P.warnings.filter((w) => w.kind === "saturated").map((w) => w.detector);
 
 async function run(seq) {
-  P.features = []; P.warnings = []; P.B = null; P.ratio = null; P.cmpNote = ""; P.conf = {};
+  P.features = []; P.warnings = []; P.B = null; P.ratio = null; P.cmpNote = ""; P.conf = {}; P.motion = null;
   const t = performance.now();
   await measure(seq, P.ea, { ra: P.ra, dec: P.dec }, "A");
   if (seq !== P.seq) return;
@@ -173,7 +193,9 @@ async function run(seq) {
   }
   render();
   if (P.eb >= 0) await compare();
-  if (seq === P.seq) confirmSingles(seq);
+  if (seq !== P.seq) return;
+  setBusy(false); render();
+  confirmSingles(seq);
 }
 
 // A feature seen in one measurement only is looked for in other visits (the compared one first, then the
@@ -219,38 +241,38 @@ async function confirmSingles(seq) {
   render();
 }
 
-// Second visit: a fast Gaia star is followed along its proper motion; any other source is snapped again on the
-// stack of that visit. A source that is gone near its old place is probably moving fast (not supported yet).
+// Second visit, Ring: a fast star is followed along its proper motion (Gaia DR3, else SIMBAD); a snapped source the
+// catalogs do not know is snapped again on the stack of that visit. Sky-model: the circle stays where it is.
 async function compare() {
-  P.B = null; P.ratio = null; P.cmpNote = "";
+  P.B = null; P.ratio = null; P.cmpNote = ""; P.motion = null;
   render();
-  if (P.eb < 0 || !P.A || P.A.seconds == null) return;     // run() calls this again when visit A is done
+  if (!P.A || P.A.seconds == null) return;     // run() calls this again when visit A is done
   const seq = P.seq, a = windowOf(P.ea), b = windowOf(P.eb);
-  if (!a || !b) return;
+  if (P.eb < 0 || !a || !b) { setBusy(false); render(); return; }
   let pos = { ra: P.ra, dec: P.dec };
-  if (P.mode === "point" && P.snapped) {
-    progress("Checking the proper motion in Gaia DR3…");
+  if (P.mode === "point") {
+    progress("Checking the motion of the source…");
     const mid = new Date((a.e.t0 + a.e.t1) / 2).toISOString();
     let m = null;
     try { m = await api.motion({ ra: P.ra, dec: P.dec, date: mid }); } catch (e) { m = { found: false }; }
     if (seq !== P.seq) return;
     if (m.found) {
       pos = { ...pos, pm_ra: m.pm_ra, pm_dec: m.pm_dec, t_ref: mid };
-      P.cmpNote = `Followed along its Gaia DR3 motion: ${(Math.hypot(m.pm_ra, m.pm_dec) / 1000).toFixed(2)}″ per year`;
-    } else {
+      P.motion = { speed: Math.hypot(m.pm_ra, m.pm_dec), from: `${m.catalog || "Gaia DR3"} ${m.source_id}` };
+    } else if (P.snapped) {
       const sh = ctx.shown();
       try {
         const q = sh && await api.point({ ...sh, kind: "stack", path: "", start: b.e.start, end: b.e.end, ra: P.ra, dec: P.dec, radius: P.r, snap: 1 });
         if (seq !== P.seq) return;
-        if (q && q.snapped) { pos = { ra: q.ra, dec: q.dec }; P.cmpNote = "Source found again on the stack of that visit"; }
+        if (q && q.snapped) pos = { ra: q.ra, dec: q.dec };
         else P.cmpNote = "⚠ The source is not at this place in the other visit. It may be moving fast: fast-moving objects are not supported yet.";
       } catch (e) { P.cmpNote = "Could not look for the source in the other visit: " + e.message; }
-      if (m.error) P.cmpNote += " (Gaia was not reachable.)";
     }
   }
   const res = await measure(seq, P.eb, pos, "B");
   if (seq !== P.seq) return;
   P.ratio = ratioBy(pointsOf(P.A), pointsOf(res));
+  setBusy(false);
   render();
 }
 
@@ -283,6 +305,28 @@ function ratioBy(a, b) {
   }
   return out;
 }
+const isReal = (r) => Math.abs(r.med - 1) > 3 * r.err && Math.abs(r.med - 1) >= 0.05;
+
+// One line for the change between the visits, from the detectors that are not saturated:
+// "no clear change", "68% fainter (D5–D6)", "12% brighter (D1–D2); 40% fainter (D6)".
+function cmpSummary() {
+  const sat = new Set(satDets());
+  const use = P.ratio.filter((r) => r.med != null && !sat.has(r.d));
+  if (!use.length) {
+    return P.ratio.every((r) => sat.has(r.d) || r.why === "no photos")
+      ? "no detector has unsaturated photos in both visits" : "not enough matching colours";
+  }
+  const real = use.filter(isReal), parts = [];
+  for (const [sign, word] of [[1, "brighter"], [-1, "fainter"]]) {
+    const g = real.filter((r) => Math.sign(r.med - 1) === sign);
+    if (!g.length) continue;
+    const wsum = g.reduce((s, r) => s + 1 / r.err ** 2, 0), mean = g.reduce((s, r) => s + r.med / r.err ** 2, 0) / wsum;
+    parts.push(`${Math.round(Math.abs(mean - 1) * 100)}% ${word} (${detList(g.map((r) => r.d))})`);
+  }
+  const flat = use.filter((r) => !isReal(r)).map((r) => r.d);
+  if (!parts.length) return "no clear change";
+  return parts.join("; ") + (flat.length ? `; no clear change in ${detList(flat)}` : "");
+}
 
 // ---------- drawing ----------
 function epochSelects() {
@@ -290,7 +334,7 @@ function epochSelects() {
   const opt = (e, k) => `<option value="${k}">Visit ${k + 1} · ${month(e.start)}</option>`;
   $("spw-ea").innerHTML = eps.map(opt).join("");
   $("spw-ea").value = P.ea;
-  $("spw-eb").innerHTML = `<option value="-1">—</option>` + eps.map((e, k) => (k === P.ea ? "" : opt(e, k))).join("");
+  $("spw-eb").innerHTML = `<option value="-1">none</option>` + eps.map((e, k) => (k === P.ea ? "" : opt(e, k))).join("");
   $("spw-eb").value = P.eb;
   $("spw-eb").disabled = eps.length < 2;
 }
@@ -299,38 +343,36 @@ function progress(text) { $("spw-prog").textContent = text; }
 function render() {
   if (!isOpen()) return;
   win.setStatus(tabStatus());
-  $("spw-pos").innerHTML = `<span class="mono">${hms(P.ra)} ${dms(P.dec)}</span>`
-    + (P.mode === "point" && P.snapped ? ` · <span title="Snapped to the brightest source near the click">snapped, S/N ${Math.round(P.snr)}</span>` : "")
-    + (P.mode === "extended" ? " · extended area" : "");
-  [].forEach.call($("spw-mode").children, (b) => b.setAttribute("aria-pressed", b.dataset.v === P.mode));
-  $("spw-r").value = P.r; $("spw-rv").textContent = P.r + "″";
+  [].forEach.call($("spw-meth").children, (b) => b.setAttribute("aria-pressed", b.dataset.v === P.mode));
+  $("spw-pos").textContent = `${hms(P.ra)} ${dms(P.dec)}` + (P.mode === "point" && P.snapped ? ` · S/N ${Math.round(P.snr)}` : "");
   const stat = (res, tag) => {
     if (!res) return "";
     const s = res.status, done = Object.values(s).filter((x) => x === "ok" || x === "err").length;
     const marks = [1, 2, 3, 4, 5, 6].map((d) => `<span class="st-${s[d]}">D${d}${s[d] === "ok" ? " ✓" : s[d] === "err" ? " ✕" : s[d] === "run" ? " …" : ""}</span>`).join(" ");
-    return `<div>${tag}${marks} <b>${done} of 6</b>${done === 6 && res.seconds != null ? (res.seconds < 0.3 ? " · from cache" : ` · ${res.seconds.toFixed(1)} s`) : ""}</div>`;
+    return `<div>${tag}${marks} <b>${done} of 6</b></div>`;
   };
-  if (P.A) $("spw-prog").innerHTML = stat(P.A, P.B ? "A: " : "") + stat(P.B, "B: ");
+  // the detector marks only while loading
+  if (P.A && (!allDone(P.A) || (P.B && !allDone(P.B)))) $("spw-prog").innerHTML = stat(P.A, P.B ? "A: " : "") + stat(P.B, "B: ");
+  else if (!P.busy) progress("");
   const warn = [];
   if (P.note) warn.push(["info", P.note]);
-  if (P.blend && P.mode === "point") warn.push(["hot", P.nSrc > 1 ? `⚠ Blended: ${P.nSrc} sources — spectrum mixes ${P.nSrc > 2 ? "them" : "both"}`
-    : "⚠ Elongated source: probably two blended sources — the spectrum may mix both"]);
-  const sat = P.warnings.filter((w) => w.kind === "saturated").map((w) => w.detector);
-  if (sat.length) warn.push(["warm", `⚠ Too bright for ${detList(sat)}: the core is saturated there, so those fluxes are too low`]);
+  if (P.blend && P.mode === "point") warn.push(["hot", P.nSrc > 1 ? `⚠ Blended: ${P.nSrc} sources — the spectrum mixes them`
+    : "⚠ Elongated: probably two blended sources — the spectrum may mix both"]);
+  const sat = satDets();
+  if (sat.length) {
+    const have = [...new Set(pointsOf(P.A).map((p) => p.detector))].filter((d) => !sat.includes(d));
+    warn.push(["warm", `⚠ ${detList(sat)} saturated (too bright)` + (have.length ? `, using ${detList(have)}` : "")]);
+  }
   P.warnings.filter((w) => w.kind !== "saturated").forEach((w) => warn.push([w.kind === "variable" ? "warm" : "info", "⚠ " + w.text]));
   if (P.cmpNote) warn.push([P.cmpNote.startsWith("⚠") ? "warm" : "info", P.cmpNote]);
-  $("spw-warn").innerHTML = warn.map(([c, t]) => `<p class="spw-w ${c}">${esc(t)}</p>`).join("") + ratioTable();
+  if (allDone(P.A) && !pointsOf(P.A).length) warn.push(["info", "No photos of this place in this visit."]);
+  $("spw-warn").innerHTML = warn.map(([c, t]) => `<p class="spw-w ${c}">${esc(t)}</p>`).join("");
+  $("spw-cmp").innerHTML = cmpHtml();
   plot();
-  $("spw-foot").textContent = (P.mode === "point"
-    ? "Every dot is one SPHEREx photo: the flux inside the circle minus the sky around it (dashed ring), corrected for the starlight outside the circle."
-    : "Every dot is one SPHEREx photo: all the light inside the circle minus NASA's model of the zodiacal glow.")
-    + " The six detectors see different colours, so together they make a spectrum.";
-  const pts = pointsOf(P.A);
-  const allDone = P.A && Object.values(P.A.status).every((x) => x === "ok" || x === "err");
-  $("spw-feat").innerHTML = !allDone ? "" : !pts.length ? `<p class="note">No photos of this place in this visit.</p>`
-    : P.features.length ? "<b>Found</b><ul>" + P.features.map((f) => `<li><b>${esc(f.name)}</b> ${f.lambda_um} µm · ${f.kind} ×${f.ratio} of the continuum · ${f.sigma}σ`
+  $("spw-feat").innerHTML = allDone(P.A) && P.features.length
+    ? "<b>Found</b><ul>" + P.features.map((f) => `<li><b>${esc(f.name)}</b> ${f.lambda_um} µm · ${f.kind} ×${f.ratio} of the continuum · ${f.sigma}σ`
       + (f.tau != null ? ` · τ ${f.tau}` : "") + ` · ${f.n > 1 ? f.n + " measurements" : confText(f)}</li>`).join("") + "</ul>"
-    : `<p class="note">No emission or absorption features found. A feature needs ≥3σ in 3 neighbouring colours, or ≥5σ where this visit has only one or two colours on it.</p>`;
+    : "";
 }
 
 function confText(f) {
@@ -345,16 +387,20 @@ function confText(f) {
   return base + " · no other visit to check";
 }
 
-// Per-detector brightness change between the two visits.
-function ratioTable() {
-  if (!P.ratio) return "";
+// Change between the two visits: one line, the table per detector folded under "details".
+function cmpHtml() {
+  if (!P.ratio || P.eb < 0) return "";
+  const eps = ctx.epochs(), sat = satDets();
   const rows = P.ratio.map((r) => {
     if (r.med == null) return `<tr><th>D${r.d}</th><td colspan="2" class="note">${r.why}</td></tr>`;
-    const pct = Math.round((r.med - 1) * 100), real = Math.abs(r.med - 1) > 3 * r.err && Math.abs(pct) >= 5;
+    const pct = Math.round((r.med - 1) * 100), real = isReal(r);
     return `<tr><th>D${r.d}</th><td>×${r.med.toFixed(2)} ± ${r.err.toFixed(2)} <span class="note">(${r.n})</span></td>`
-      + `<td class="${real ? (pct < 0 ? "spw-fade" : "spw-bright") : "note"}">${real ? Math.abs(pct) + "% " + (pct < 0 ? "fainter" : "brighter") : "no clear change"}</td></tr>`;
+      + `<td class="${sat.includes(r.d) ? "note" : real ? (pct < 0 ? "spw-fade" : "spw-bright") : "note"}">`
+      + (sat.includes(r.d) ? "saturated, not used" : real ? Math.abs(pct) + "% " + (pct < 0 ? "fainter" : "brighter") : "no clear change") + "</td></tr>";
   }).join("");
-  return `<div class="spw-ratio"><b>Visit ${P.eb + 1} / visit ${P.ea + 1}, by detector</b><table>${rows}</table></div>`;
+  const mv = P.motion ? ` <span class="spw-mv" title="${esc(P.motion.from)}">· followed along its motion (${(P.motion.speed / 1000).toFixed(1)}″/yr)</span>` : "";
+  return `<div class="spw-ratio"><b>vs ${month(eps[P.eb].start)}:</b> ${cmpSummary()}${mv}`
+    + `<details><summary>details</summary><p class="note">Visit ${P.eb + 1} / visit ${P.ea + 1}, median ratio by detector (pairs of colours)</p><table>${rows}</table></details></div>`;
 }
 
 let marks = [];          // hover targets: {x, y, p, which}
@@ -408,7 +454,7 @@ function plot() {
     marks.push({ x: cx, y: cy, p, which });
   });
   dotsOf(A, "A"); dotsOf(B, "B");
-  if (!all.length) g.push(`<text class="sp-ax" x="${W / 2}" y="${H / 2}" text-anchor="middle">${P.A && Object.values(P.A.status).some((s) => s === "run" || s === "wait") ? "Measuring…" : ""}</text>`);
+  if (!all.length) g.push(`<text class="sp-ax" x="${W / 2}" y="${H / 2}" text-anchor="middle">${P.busy ? "Measuring…" : ""}</text>`);
   svg.innerHTML = g.join("");
   const eps = ctx.epochs();
   const lab = (k) => (eps[k] ? `Visit ${k + 1} · ${month(eps[k].start)}` : "");
@@ -436,7 +482,7 @@ function hover(e) {
   const flux = p.upper_limit ? `&lt; ${fmtFlux(p.limit_ujy)}${p.limit_ujy < 1e3 ? " µJy" : ""} (3σ)` : `${fmtFlux(p.flux_ujy)}${p.flux_ujy < 1e3 ? " µJy" : ""} ± ${fmtFlux(p.err_ujy)}${p.err_ujy < 1e3 ? " µJy" : ""}`;
   t.innerHTML = `<b>${DET[p.detector - 1][0]} · ${p.lambda_um.toFixed(3)} µm</b> <span class="note">(band ${p.band_um.toFixed(3)})</span><br>${flux}<br>`
     + `<span class="note">${day(p.date)}${P.B ? " · visit " + ((best.which === "A" ? P.ea : P.eb) + 1) : ""}<br>`
-    + (P.mode === "point" ? `aperture-corrected ×${(p.aperture_corr || 1).toFixed(2)}` : "area: sky = zodiacal model, no aperture correction")
+    + (P.mode === "point" ? `ring background, corrected ×${(p.aperture_corr || 1).toFixed(2)} for light outside the circle` : "sky-model background, no correction")
     + (p.n_bad_pixels ? ` · ${p.n_bad_pixels} bad pixel${p.n_bad_pixels > 1 ? "s" : ""} left out` : "")
     + (p.n_warn_pixels ? ` · ${p.n_warn_pixels} flagged` : "") + "</span>";
   t.style.display = "block";

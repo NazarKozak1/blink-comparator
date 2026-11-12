@@ -122,3 +122,10 @@ def test_gaia_busy_and_retry_once_a_minute(monkeypatch, tmp_path):
     f.tried["gaia"] -= C.GAIA_RETRY_S + 1
     assert C.retry_gaia(f) is True
     assert f.done.wait(5) and len(calls) == 2 and f.state["gaia"] == "busy"
+
+
+def test_archive_downtime_page_is_an_error_not_rows():
+    # ESA Gaia in maintenance answers 200 with an HTML page (2026-11-12)
+    with pytest.raises(ValueError):
+        C._csv('<html class="ltr" dir="ltr" lang="en-GB">\n<head>\n')
+    assert C._csv("a,b\n1,2\n") == [{"a": "1", "b": "2"}]

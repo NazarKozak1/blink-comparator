@@ -605,7 +605,7 @@ export function init() {
   });
   // click / Alt+click / drag on the picture: aperture.js; the spectrum window: spectrum.js
   const ready = () => !!(D.info && D.all.length);
-  AP.init({ info: () => D.info, fov: () => S.fov, ready, active: () => S.tool === "spectrum", onRadius: (r) => SP.radius(r),
+  AP.init({ info: () => D.info, fov: () => S.fov, ready, active: () => S.tool === "spectrum",
     onPick: (p) => { newPin(p, true); SP.open(p); },
     onPoint: (p) => newPin(p, false) });
   $("pin").addEventListener("click", onObjectClick);

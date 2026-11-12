@@ -1,6 +1,6 @@
 """Spectrum of one point or area: aperture photometry on every frame of a detector in a time window,
-and the proper motion of the object from Gaia DR3 (ESA archive, async; SIMBAD if Gaia does not answer; cached on
-disk) for comparing visits. IRSA is not reachable from the production server and is not used."""
+and the proper motion of the object from Gaia DR3 (ESA archive, async; SIMBAD if Gaia has none or does not answer;
+cached on disk) for comparing visits. IRSA is not reachable from the production server and is not used."""
 import json
 import math
 import threading
@@ -20,6 +20,7 @@ GAIA_CACHE = Path(__file__).resolve().parents[2] / "cache" / "gaia_pm.json"
 GAIA_EPOCH = 2016.0
 FAST_PM_MAS = 100        # slower stars move < 1" in 10 years: treated as fixed
 GAIA_MATCH_ARCSEC = 4.0
+EMPTY_TTL_S = 86400     # "no fast star here" is asked again after a day
 _lock = threading.Lock()
 
 
@@ -73,24 +74,39 @@ def _save_cache(c: dict):
 
 def gaia_motion(ra: float, dec: float, when: datetime, timeout: float = 20.0) -> dict:
     """Fast-moving star (> 100 mas/yr) whose position at `when` is within 4" of (ra, dec): Gaia DR3 from the ESA
-    archive, else SIMBAD. Returns {found, source_id, pm_ra, pm_dec, g, separation} or {found: False}; a failed
-    lookup is not an error for the page (it snaps the source again) and is not cached."""
+    archive, then SIMBAD when Gaia has none or does not answer (WISE 0855 is too faint for Gaia).
+    Returns {found, source_id, pm_ra, pm_dec, g, separation[, catalog]} or {found: False}. A star found is cached for
+    good; "none" only for EMPTY_TTL_S and only when both catalogs answered; a failed lookup is not cached."""
     key = f"{ra:.4f},{dec:.4f}"
     with _lock:
         cache = _load_cache()
-    if key in cache:
-        return cache[key]
+    hit = cache.get(key)
+    if hit and (hit.get("found") or time.time() - hit.get("t", 0) < EMPTY_TTL_S):
+        return {k: v for k, v in hit.items() if k != "t"}
+    failed = False
     try:
         out = catalogs.gaia_motion(ra, dec, when, 150, FAST_PM_MAS, GAIA_MATCH_ARCSEC, timeout)
     except Exception as e:
-        print(f"gaia motion: ESA archive failed ({e}), trying SIMBAD")
+        print(f"motion {key}: Gaia ESA failed ({e}), trying SIMBAD")
+        out, failed = {"found": False}, True
+    if out.get("found"):
+        print(f"motion {key}: Gaia DR3 {out['source_id']}, {math.hypot(out['pm_ra'], out['pm_dec']):.0f} mas/yr")
+    else:
+        if not failed:
+            print(f"motion {key}: no fast star in Gaia DR3, trying SIMBAD")
         try:
             out = catalogs.simbad_motion(ra, dec, when, FAST_PM_MAS, GAIA_MATCH_ARCSEC)
-        except Exception as e2:
-            print(f"gaia motion: SIMBAD failed too ({e2})")
-            return {"found": False}
+            print(f"motion {key}: SIMBAD " + (f"{out['source_id']}, {math.hypot(out['pm_ra'], out['pm_dec']):.0f} mas/yr"
+                                               if out.get("found") else "has none either"))
+        except Exception as e:
+            print(f"motion {key}: SIMBAD failed ({e})")
+            failed = True
+    if failed and not out.get("found"):
+        return {"found": False}
     with _lock:
         cache = _load_cache()
-        cache[key] = out
+        now = time.time()
+        cache = {k: v for k, v in cache.items() if v.get("found") or now - v.get("t", 0) < EMPTY_TTL_S}
+        cache[key] = out if out.get("found") else {**out, "t": round(now)}
         _save_cache(cache)
     return out
