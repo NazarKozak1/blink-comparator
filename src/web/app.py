@@ -35,6 +35,7 @@ from . import catalogs, photometry, spectrum as spec
 from .windows import WINDOW_KINDS, as_utc, split, spread_over_epochs
 from . import warmup
 
+
 STATIC = Path(__file__).parent / "static"
 PNG_MAX_AGE = 86400
 
@@ -135,6 +136,9 @@ def warmup_status():
     """Progress of the preset warm-up started with the server (SPHEREX_WARMUP=0 turns it off)."""
     return warmup.STATUS
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse("src/web/static/app/favicon-32.png")
 
 @app.get("/api/random")
 def random_point(detector: int = Query(6, ge=1, le=6)):
