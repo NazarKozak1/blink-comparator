@@ -6,7 +6,7 @@ function rng(s){return function(){s|=0;s=s+0x6D2B79F5|0;var t=Math.imul(s^s>>>15
 (function(){
 var c=document.getElementById("anim"),x=c.getContext("2d"),W,H,st=[],sh=null,raf=0,last=0,nextSh=0,
 rm=matchMedia("(prefers-reduced-motion:reduce)").matches;
-function home(){var h=location.hash.slice(1);return["explore","sphere","analytics"].indexOf(h)<0&&h.indexOf("a-")!==0}
+function home(){var h=location.hash.slice(1);return["explore","sphere","sphere-classic","analytics"].indexOf(h)<0&&h.indexOf("a-")!==0}
 function size(){var d=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;c.width=W*d;c.height=H*d;x.setTransform(d,0,0,d,0,0);
   var n=Math.max(80,Math.min(220,Math.round(W*H/9000)));st=[];for(var i=0;i<n;i++)st.push({x:Math.random()*W,y:Math.random()*H,z:.25+Math.random()*.75,p:Math.random()*6.28,s:.6+Math.random()*1.4,c:Math.random()<.3?"170,200,255":"225,235,255"});if(rm)draw(0)}
 function draw(t){x.clearRect(0,0,W,H);

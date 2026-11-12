@@ -231,6 +231,13 @@ No API keys are needed: S3, SIMBAD and the Gaia archive are queried anonymously.
   Gaia Data Processing and Analysis Consortium (DPAC).
 - **SIMBAD:** the SIMBAD database, operated at CDS, Strasbourg, France.
 - **Proper motion of WISE 0855−0714:** Kirkpatrick et al. (2019), via SIMBAD.
+- **Sky sphere:** `src/web/static/app/data/sky.json` is reduced from [d3-celestial](https://github.com/ofrohn/d3-celestial)
+  (`data/stars.6.json`, `constellations.lines.json`, `constellations.json`), © 2015 Olaf Frohn, BSD-3-Clause (full text:
+  `src/web/static/app/data/LICENSE-d3-celestial.txt`); we kept 10 constellations and rounded the coordinates (`scripts/build_sky_data.py` rebuilds the file). Stars:
+  *XHIP: An Extended Hipparcos Compilation*, Anderson E., Francis C., 2012, Astronomy Letters 38, 331,
+  [doi:10.1134/S1063773712050015](https://doi.org/10.1134/S1063773712050015), via CDS/VizieR (catalogue V/137D,
+  2013yCat.5137....0A). Constellation lines after the IAU and *Sky & Telescope* constellation charts (Roger Sinnott, Rick Fienberg,
+  Alan MacRobert), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), as adapted by Olaf Frohn.
 - **Software:** Astropy, NumPy, FastAPI, Uvicorn, psycopg, PostgreSQL, Caddy, Docker.
 
 ## Use of AI

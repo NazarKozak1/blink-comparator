@@ -98,7 +98,10 @@ tr.r{cursor:pointer}tr.r:hover,tr.r[aria-selected=true]{background:rgba(98,208,2
 svg text{fill:var(--mut);font:11px "IBM Plex Mono",monospace}
 .cards{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr))}
 .skywrap{position:relative;height:calc(100vh - 150px);min-height:460px;margin:0 18px 18px;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:#02030a;touch-action:none}
-#sky{width:100%;height:100%;display:block;cursor:grab}
+#sky,#c-sky{width:100%;height:100%;display:block;cursor:grab}
+.sk-tip{position:absolute;z-index:3;pointer-events:none;padding:8px 12px;border-radius:12px;max-width:240px;display:grid;gap:1px}
+.sk-tip[hidden]{display:none}.sk-tip b{font-weight:500;color:var(--a2)}.sk-tip span{font-size:12px}.sk-tip small{font-size:11px;color:var(--mut)}
+.sk-lay{display:flex;gap:6px;flex-wrap:wrap}.sk-lay .tool{padding:5px 12px;font-size:13px}.sk-lay .tool svg{width:16px;height:16px}
 .frame{position:absolute;left:50%;top:50%;border:2px solid var(--a2);box-shadow:0 0 0 9999px rgba(2,3,10,.35);pointer-events:none;transform:translate(-50%,-50%)}
 .frame i{position:absolute;left:0;top:-22px;font:500 12px "IBM Plex Mono",monospace;font-style:normal;color:var(--a2);white-space:nowrap}
 .dock{position:absolute;left:12px;right:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
@@ -123,8 +126,8 @@ select{min-width:0}
 @media(max-width:420px){.dlg{flex-direction:column}}
 #tipbox{position:fixed;z-index:1000;display:none;max-width:min(260px,calc(100vw - 16px));background:#07102a;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.4;pointer-events:none}
 .mas{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:40;width:72px;height:72px}
-body[data-v=sphere] .mas:not(.moved){bottom:104px}
-@media(max-width:700px){body[data-v=sphere] .mas:not(.moved){bottom:150px}}
+body[data-v=sphere] .mas:not(.moved),body[data-v=sphere-classic] .mas:not(.moved){bottom:104px}
+@media(max-width:700px){body[data-v=sphere] .mas:not(.moved),body[data-v=sphere-classic] .mas:not(.moved){bottom:150px}}
 .mbtn{display:block;background:none;border:0;padding:0;width:72px;height:72px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;filter:drop-shadow(0 4px 10px rgba(0,0,0,.6))}
 .mas.drag .mbtn{cursor:grabbing}
 .mbtn svg{width:100%;height:100%;overflow:visible;animation:bob 3.2s ease-in-out infinite;pointer-events:none}
@@ -406,11 +409,21 @@ body[data-v=sphere] .mas:not(.moved){bottom:104px}
 </section>
 
 <section id="v-sphere" hidden>
-  <div class="skywrap"><canvas id="sky" aria-label="Sky sphere. Drag to look around."></canvas><div class="frame" id="sfr"><i id="sfl"></i></div>
+  <div class="skywrap"><canvas id="sky" tabindex="0" aria-label="Sky sphere. Drag or use the arrow keys to look around; click a ring to open that object."></canvas><div class="frame" id="sfr"><i id="sfl"></i></div>
+    <div class="sk-tip panel" id="sk-tip" role="status" hidden></div>
     <div class="panel mono" id="sk-read" style="position:absolute;left:12px;top:12px;padding:8px 12px;font-size:13px"></div>
     <div class="zoom"><button class="ghost" id="zi" aria-label="Zoom in">+</button><button class="ghost" id="zo" aria-label="Zoom out">−</button></div>
-    <div class="dock"><div class="panel" style="padding:10px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label for="sk-fov" class="mono" style="font-size:13px">Field <span id="sk-fovv">6′</span></label><input id="sk-fov" type="range" min="1" max="30" value="6" style="width:130px"></div>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="note mono">Drag to look around · scroll to zoom<span class="tip" tabindex="0" role="note" data-t="Background stars are decorative. Rings mark real targets.">i</span></span><button class="cta" id="sk-go">Open this field</button></div></div></div>
+    <div class="dock"><div class="panel" style="padding:10px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label for="sk-fov" class="mono" style="font-size:13px">Field <span id="sk-fovv">6′</span></label><input id="sk-fov" type="range" min="1" max="30" value="6" style="width:130px">
+        <div class="sk-lay"><button class="ghost tool" id="sk-con" type="button" aria-pressed="true"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15l5-4 4 2 5-8" /><circle cx="3" cy="15" r="1.3" /><circle cx="8" cy="11" r="1.3" /><circle cx="12" cy="13" r="1.3" /><circle cx="17" cy="5" r="1.3" /></svg>Constellations</button><button class="ghost tool" id="sk-obj" type="button" aria-pressed="true"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6" /><circle cx="10" cy="10" r="1.5" /></svg>Objects</button></div></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="note mono">Drag to look around · scroll or pinch to zoom<span class="tip" tabindex="0" role="note" data-t="Real stars down to magnitude 6, the faintest the eye can see on a dark night (Hipparcos, XHIP compilation), coloured by their temperature. Blue rings are the challenge targets, dashed rings famous landmarks: click one to open it in Explore.">i</span></span><button class="cta" id="sk-go">Open this field</button></div></div></div>
+</section>
+
+<section id="v-sphere-classic" hidden>
+  <div class="skywrap"><canvas id="c-sky" aria-label="Sky sphere. Drag to look around."></canvas><div class="frame" id="c-sfr"><i id="c-sfl"></i></div>
+    <div class="panel mono" id="c-sk-read" style="position:absolute;left:12px;top:12px;padding:8px 12px;font-size:13px"></div>
+    <div class="zoom"><button class="ghost" id="c-zi" aria-label="Zoom in">+</button><button class="ghost" id="c-zo" aria-label="Zoom out">−</button></div>
+    <div class="dock"><div class="panel" style="padding:10px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><label for="c-sk-fov" class="mono" style="font-size:13px">Field <span id="c-sk-fovv">6′</span></label><input id="c-sk-fov" type="range" min="1" max="30" value="6" style="width:130px"></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="note mono">Drag to look around · scroll to zoom<span class="tip" tabindex="0" role="note" data-t="Background stars are decorative. Rings mark real targets.">i</span></span><button class="cta" id="c-sk-go">Open this field</button></div></div></div>
 </section>
 
 <section id="v-analytics" class="wrap" hidden>

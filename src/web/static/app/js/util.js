@@ -6,13 +6,14 @@ export const DET = [["D1", 0.75, 1.10, "#4DA3FF"], ["D2", 1.10, 1.62, "#5be3d0"]
   ["D4", 2.42, 3.82, "#FFB347"], ["D5", 3.82, 4.42, "#FF7A5C"], ["D6", 4.42, 5.00, "#FF5C7A"]];
 export const PIXEL_ARCSEC = 6.15;   // SPHEREx pixel = grid pixel of every picture
 
+// rounded first, so 305° reads 20h20m0.0s, not 20h19m60.0s
 export function hms(ra) {
-  const h = ra / 15, a = Math.floor(h), m = Math.floor((h - a) * 60);
-  return a + "h" + m + "m" + (((h - a) * 60 - m) * 60).toFixed(1) + "s";
+  const t = Math.round((((ra % 360) + 360) % 360) * 240 * 10) / 10, a = Math.floor(t / 3600), m = Math.floor((t - a * 3600) / 60);
+  return (a % 24) + "h" + m + "m" + (t - a * 3600 - m * 60).toFixed(1) + "s";
 }
 export function dms(dec) {
-  const s = dec < 0 ? "-" : "+", v = Math.abs(dec), d = Math.floor(v), m = Math.floor((v - d) * 60);
-  return s + d + "°" + String(m).padStart(2, "0") + "′" + (((v - d) * 60 - m) * 60).toFixed(0).padStart(2, "0") + "″";
+  const s = dec < 0 ? "-" : "+", t = Math.round(Math.abs(dec) * 3600), d = Math.floor(t / 3600), m = Math.floor((t - d * 3600) / 60);
+  return s + d + "°" + String(m).padStart(2, "0") + "′" + String(t - d * 3600 - m * 60).padStart(2, "0") + "″";
 }
 export const date = (iso) => new Date(iso);
 export function day(t) { const x = date(t); return x.getUTCDate() + " " + MO[x.getUTCMonth()] + " " + x.getUTCFullYear(); }

@@ -2,10 +2,11 @@
 import * as analytics from "./analytics.js";
 import * as explore from "./explore.js";
 import * as sphere from "./sphere.js";
+import * as sphereClassic from "./sphere_classic.js";
 import { readUrl, S, writeUrl } from "./state.js";
 import { $ } from "./util.js";
 
-const V = ["home", "explore", "sphere", "analytics", "article", "object"];
+const V = ["home", "explore", "sphere", "sphere-classic", "analytics", "article", "object"];   // sphere-classic: no menu button
 
 function route() {
   let h = decodeURIComponent(location.hash.slice(1));
@@ -18,6 +19,7 @@ function route() {
   [].forEach.call(document.querySelectorAll("nav button"), (b) => b.setAttribute("aria-current", b.dataset.v === h));
   $("back").hidden = h === "home";
   if (h === "sphere") sphere.resize();
+  if (h === "sphere-classic") sphereClassic.resize();
   if (h === "explore") explore.fitStage();
   else document.body.classList.remove("fit");
   if (h === "analytics") analytics.render();
@@ -30,9 +32,15 @@ function open(ra, dec, fov) {
   go("explore");
   explore.search(ra.toFixed(5) + " " + dec.toFixed(5), { fov, mode: "frames", band: 0, i: 0, ea: 0, eb: -1 });
 }
+// a challenge target with its own settings, as picking it in the name search does
+function openTarget(t) {
+  go("explore");
+  explore.search(t.q, { det: t.det, fov: t.fov, mode: t.mode, band: 0, i: 0, ea: 0, eb: -1 });
+}
 
 explore.init();
-sphere.init(open);
+sphere.init(open, openTarget);
+sphereClassic.init(open);
 explore.onField(() => { if (!$("v-analytics").hidden) analytics.render(); });
 
 addEventListener("hashchange", route);

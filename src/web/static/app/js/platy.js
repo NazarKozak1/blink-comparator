@@ -27,7 +27,7 @@ var S=[
 {v:"sphere",s:".skywrap",t:"No coordinates? Drag to spin the sky, then press Open this field."},
 {v:"analytics",s:"#v-analytics .panel",t:"Here are the counts for your area: still, moving, known and unknown objects."}
 ];
-var H={article:"Click the highlighted links in the text to open the tools.",explore:"Tip: Diff mode shows only what changed between two visits.",sphere:"Drag the sky to look around. Click a ring to jump to a target.",analytics:"These numbers describe the field you opened in Explore."};
+var H={article:"Click the highlighted links in the text to open the tools.",explore:"Tip: Diff mode shows only what changed between two visits.",sphere:"Drag the sky to look around. Click a ring to open that object.","sphere-classic":"Drag the sky to look around. Click a ring to jump to a target.",analytics:"These numbers describe the field you opened in Explore."};
 var G=["Hi! What’s on the map today?","Hello! Which coordinates are we exploring today?","Welcome back! Ready to catch something that moves?","Hey! Shall we compare some infrared photos?","ORA! Let’s find something new in the sky.","Good to see you! Pick a spot and press play."];
 var step=-1,seen=false,spot=null,tm,pos=null;
 try{seen=localStorage.getItem("platy-tour")==="1";pos=JSON.parse(localStorage.getItem("platy-pos")||"null")}catch(e){}
